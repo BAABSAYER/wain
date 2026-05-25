@@ -1,0 +1,19 @@
+{
+  "name": "wain",
+  "private": true,
+  "scripts": {
+    "dev": "turbo run dev",
+    "build": "turbo run build",
+    "lint": "turbo run lint",
+    "db:generate": "pnpm --filter @wain/db generate",
+    "db:migrate": "pnpm --filter @wain/db migrate:dev",
+    "db:push": "pnpm --filter @wain/db db:push"
+  },
+  "devDependencies": {
+    "turbo": "^2.3.3",
+    "typescript": "^5.7.2"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

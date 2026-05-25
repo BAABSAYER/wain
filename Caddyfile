@@ -1,0 +1,27 @@
+# Wain reverse proxy. Serves the whole app on ONE plain-HTTP port (HTTP_PORT) so
+# it never collides with the usual 80/443 (and any other busy ports) on a shared
+# server. Put your own TLS terminator / reverse proxy in front of this port if
+# you need HTTPS.
+#
+#   http://HOST:HTTP_PORT/api/*              -> api   (NestJS, global prefix "api")
+#   http://HOST:HTTP_PORT/ADMIN_BASE_PATH/* -> admin  (obscure URL, same origin)
+#   http://HOST:HTTP_PORT/*                 -> web    (visitor app, catch-all)
+
+:{$HTTP_PORT:8787} {
+	encode zstd gzip
+
+	# API — keep the /api prefix (NestJS expects it), don't strip.
+	handle /api/* {
+		reverse_proxy api:4000
+	}
+
+	# Admin panel at its obscure base path.
+	handle {$ADMIN_BASE_PATH:/console}* {
+		reverse_proxy admin:3001
+	}
+
+	# Everything else is the visitor app.
+	handle {
+		reverse_proxy web:3000
+	}
+}

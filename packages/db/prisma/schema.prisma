@@ -1,0 +1,132 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Building ─────────────────────────────────────────────────────────────────
+
+model Building {
+  id          String   @id @default(cuid())
+  name        String
+  nameAr      String
+  address     String   @default("")
+  slug        String   @unique
+  logoUrl     String?
+  northOffset Float    @default(0)   // degrees: floor-plan "up" → true north (clockwise)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  floors    Floor[]
+  qrPoints  QRPoint[]
+}
+
+// ─── Floor ────────────────────────────────────────────────────────────────────
+
+model Floor {
+  id            String   @id @default(cuid())
+  buildingId    String
+  name          String
+  nameAr        String
+  level         Int
+  width         Float    @default(1000)
+  height        Float    @default(1000)
+  floorPlanUrl  String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  building  Building  @relation(fields: [buildingId], references: [id], onDelete: Cascade)
+  stores    Store[]
+  navNodes  NavNode[]
+
+  @@unique([buildingId, level])
+}
+
+// ─── Store / Room ─────────────────────────────────────────────────────────────
+
+model Store {
+  id            String   @id @default(cuid())
+  floorId       String
+  name          String
+  nameAr        String
+  category      String   @default("other")
+  zone          String?
+  zoneAr        String?
+  logoUrl       String?
+  polygon       Json
+  extrudeHeight Float    @default(4)
+  color         String   @default("#94a3b8")
+  isSearchable  Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  floor       Floor     @relation(fields: [floorId], references: [id], onDelete: Cascade)
+  navNode     NavNode?  @relation(fields: [navNodeId], references: [id])
+  navNodeId   String?
+}
+
+// ─── Navigation Graph ─────────────────────────────────────────────────────────
+
+model NavNode {
+  id                  String   @id @default(cuid())
+  floorId             String
+  x                   Float
+  y                   Float
+  z                   Float    @default(0)
+  type                String   @default("path")
+  connectedFloorNodeId String?
+
+  floor        Floor      @relation(fields: [floorId], references: [id], onDelete: Cascade)
+  stores       Store[]
+  qrPoints     QRPoint[]
+  edgesFrom    NavEdge[]  @relation("EdgeFrom")
+  edgesTo      NavEdge[]  @relation("EdgeTo")
+}
+
+model NavEdge {
+  id           String  @id @default(cuid())
+  fromNodeId   String
+  toNodeId     String
+  distance     Float
+  isAccessible Boolean @default(true)
+
+  fromNode NavNode @relation("EdgeFrom", fields: [fromNodeId], references: [id], onDelete: Cascade)
+  toNode   NavNode @relation("EdgeTo",   fields: [toNodeId],   references: [id], onDelete: Cascade)
+
+  @@unique([fromNodeId, toNodeId])
+}
+
+// ─── QR Point ─────────────────────────────────────────────────────────────────
+
+model QRPoint {
+  id         String   @id @default(cuid())
+  buildingId String
+  floorId    String
+  nodeId     String
+  code       String   @unique
+  label      String   @default("")
+  qrImageUrl String?
+  createdAt  DateTime @default(now())
+
+  building Building @relation(fields: [buildingId], references: [id], onDelete: Cascade)
+  node     NavNode  @relation(fields: [nodeId],     references: [id], onDelete: Cascade)
+}
+
+// ─── Analytics ────────────────────────────────────────────────────────────────
+
+model AnalyticsEvent {
+  id          String   @id @default(cuid())
+  buildingId  String
+  floorId     String?
+  qrCode      String?
+  eventType   String
+  destinationId String?
+  sessionId   String?
+  createdAt   DateTime @default(now())
+
+  @@index([buildingId, createdAt])
+  @@index([qrCode])
+}

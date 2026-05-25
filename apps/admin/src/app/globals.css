@@ -1,0 +1,13 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --toolbar-h: 56px;
+  --sidebar-w: 280px;
+}
+
+body {
+  @apply bg-slate-50 text-slate-900;
+  font-family: "Inter", system-ui, sans-serif;
+}

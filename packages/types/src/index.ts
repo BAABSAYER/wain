@@ -1,0 +1,179 @@
+// ─── Geometry ────────────────────────────────────────────────────────────────
+
+export interface Point2D {
+  x: number;
+  y: number;
+}
+
+export interface Polygon2D {
+  points: Point2D[];
+}
+
+// ─── Building ────────────────────────────────────────────────────────────────
+
+export interface Building {
+  id: string;
+  name: string;
+  nameAr: string;
+  address: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// ─── Floor ───────────────────────────────────────────────────────────────────
+
+export interface Floor {
+  id: string;
+  buildingId: string;
+  name: string;
+  nameAr: string;
+  level: number;
+  width: number;
+  height: number;
+  floorPlanUrl: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// ─── Store / Room ─────────────────────────────────────────────────────────────
+
+export type StoreCategory =
+  | "retail"
+  | "food"
+  | "services"
+  | "medical"
+  | "education"
+  | "transit"
+  | "restroom"
+  | "elevator"
+  | "stairs"
+  | "escalator"
+  | "entrance"
+  | "parking"
+  | "other";
+
+export interface Store {
+  id: string;
+  floorId: string;
+  name: string;
+  nameAr: string;
+  category: StoreCategory;
+  polygon: Point2D[];
+  extrudeHeight: number;
+  color: string;
+  isSearchable: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// ─── Navigation Graph ─────────────────────────────────────────────────────────
+
+export type NodeType = "path" | "entrance" | "elevator" | "stairs" | "escalator" | "qr";
+
+export interface NavNode {
+  id: string;
+  floorId: string;
+  x: number;
+  y: number;
+  z: number;
+  type: NodeType;
+  connectedFloorNodeId: string | null;
+}
+
+export interface NavEdge {
+  id: string;
+  fromNodeId: string;
+  toNodeId: string;
+  distance: number;
+  isAccessible: boolean;
+}
+
+// ─── QR Point ─────────────────────────────────────────────────────────────────
+
+export interface QRPoint {
+  id: string;
+  buildingId: string;
+  floorId: string;
+  nodeId: string;
+  code: string;
+  label: string;
+  qrImageUrl: string | null;
+  createdAt: string;
+}
+
+// ─── Routing ─────────────────────────────────────────────────────────────────
+
+export interface RouteRequest {
+  buildingId: string;
+  fromNodeId: string;
+  toStoreId: string;
+  accessibleOnly?: boolean;
+}
+
+export interface RouteStep {
+  nodeId: string;
+  floorId: string;
+  x: number;
+  y: number;
+  z: number;
+  instruction?: string;
+}
+
+export interface RouteResult {
+  steps: RouteStep[];
+  totalDistance: number;
+  estimatedMinutes: number;
+  floors: string[];
+}
+
+// ─── API Response wrapper ─────────────────────────────────────────────────────
+
+export interface ApiResponse<T> {
+  data: T;
+  success: boolean;
+  message?: string;
+}
+
+export interface ApiError {
+  success: false;
+  message: string;
+  statusCode: number;
+}
+
+// ─── Map Builder canvas types ─────────────────────────────────────────────────
+
+export type DrawTool = "select" | "polygon" | "shape" | "node" | "edge" | "qr" | "pan";
+
+export interface CanvasStore {
+  id: string;
+  polygon: Point2D[];
+  name: string;
+  nameAr: string;
+  category: StoreCategory;
+  color: string;
+  extrudeHeight: number;
+  zone?: string;
+  zoneAr?: string;
+  logoUrl?: string;
+  navNodeId?: string | null;
+}
+
+export interface CanvasNode {
+  id: string;
+  x: number;
+  y: number;
+  type: NodeType;
+}
+
+export interface CanvasEdge {
+  id: string;
+  fromId: string;
+  toId: string;
+}
+
+export interface CanvasState {
+  stores: CanvasStore[];
+  nodes: CanvasNode[];
+  edges: CanvasEdge[];
+  qrPoints: Array<{ id: string; nodeId: string; label: string }>;
+}

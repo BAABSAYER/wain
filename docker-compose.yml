@@ -1,0 +1,150 @@
+# Wain — single-droplet Docker deployment.
+#   docker compose --env-file .env up -d --build
+#
+# Services: caddy (TLS + routing) -> web / admin / api -> postgres.
+# `migrate` is a one-shot that syncs the DB schema before the API starts.
+#
+# Scaling to ~1000 users is config-only (see DEPLOY.md):
+#   - point DATABASE_URL at managed Postgres
+#   - uncomment the `redis` service + wire the cache adapter
+#   - run more API replicas behind Caddy
+
+name: wain
+
+services:
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    # Only this one host port is published — pick anything free (default 8787).
+    ports:
+      - "${HTTP_PORT:-8787}:${HTTP_PORT:-8787}"
+    environment:
+      HTTP_PORT: ${HTTP_PORT:-8787}
+      ADMIN_BASE_PATH: ${ADMIN_BASE_PATH:-/console}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - web
+      - admin
+      - api
+    networks: [wain]
+
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:-wain}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-wain}"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+    networks: [wain]
+
+  # One-shot: create/sync tables, then exit. API waits for this to succeed.
+  migrate:
+    image: wain-api:latest
+    command: ["pnpm", "--filter", "@wain/db", "exec", "prisma", "db", "push", "--skip-generate"]
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+    networks: [wain]
+
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    image: wain-api:latest
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: "4000"
+      DATABASE_URL: ${DATABASE_URL}
+      APP_BASE_URL: ${APP_BASE_URL}
+      AUTH_SECRET: ${AUTH_SECRET:?set AUTH_SECRET in .env}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:?set ADMIN_PASSWORD in .env}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:4000/api/buildings').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 5s
+      timeout: 5s
+      retries: 24
+      start_period: 20s
+    networks: [wain]
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
+    image: wain-web:latest
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: "3000"
+    depends_on: [api]
+    networks: [wain]
+
+  admin:
+    build:
+      context: .
+      dockerfile: apps/admin/Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
+        ADMIN_BASE_PATH: ${ADMIN_BASE_PATH:-/console}
+    image: wain-admin:latest
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: "3001"
+    depends_on: [api]
+    networks: [wain]
+
+  # One-shot: feed the DB with demo buildings once the API is healthy.
+  # Idempotent (skips if buildings already exist), so re-running up is safe.
+  seed:
+    image: wain-api:latest
+    working_dir: /app
+    command: ["node", "scripts/seed-all.mjs"]
+    environment:
+      WAIN_API_URL: http://api:4000/api
+      WAIN_APP_URL: ${APP_BASE_URL}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:?set ADMIN_PASSWORD in .env}
+      SEED_SCRIPTS: ${SEED_SCRIPTS:-seed-mall.mjs,seed-hospital.mjs,seed-saud1.mjs}
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: "no"
+    networks: [wain]
+
+  # ── Enable when scaling out (shared cache + rate-limit store) ──
+  # redis:
+  #   image: redis:7-alpine
+  #   restart: unless-stopped
+  #   command: ["redis-server", "--maxmemory", "256mb", "--maxmemory-policy", "allkeys-lru"]
+  #   volumes:
+  #     - redisdata:/data
+  #   networks: [wain]
+
+volumes:
+  pgdata:
+  caddy_data:
+  caddy_config:
+  # redisdata:
+
+networks:
+  wain:
