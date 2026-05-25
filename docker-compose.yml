@@ -50,6 +50,7 @@ services:
   # One-shot: create/sync tables, then exit. API waits for this to succeed.
   migrate:
     image: wain-api:latest
+    pull_policy: never   # reuse the locally built api image; never try to pull it
     command: ["pnpm", "--filter", "@wain/db", "exec", "prisma", "db", "push", "--skip-generate"]
     environment:
       DATABASE_URL: ${DATABASE_URL}
@@ -118,6 +119,7 @@ services:
   # Idempotent (skips if buildings already exist), so re-running up is safe.
   seed:
     image: wain-api:latest
+    pull_policy: never   # reuse the locally built api image; never try to pull it
     working_dir: /app
     command: ["node", "scripts/seed-all.mjs"]
     environment:
