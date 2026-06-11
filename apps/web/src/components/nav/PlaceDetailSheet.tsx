@@ -22,68 +22,71 @@ const CATEGORY_META: Record<string, { tkey: TKey; emoji: string; tint: string }>
   other:     { tkey: "catPlace",     emoji: "•",  tint: "bg-slate-50 text-slate-600 border-slate-200" },
 };
 
+// Google-Maps-style: a slim non-blocking bottom card that previews the place
+// + offers a single primary "Directions" action. Keeps the map fully visible
+// so the user can verify the location before confirming.
 export default function PlaceDetailSheet({
   name, nameAr, category, floorName, floorNameAr, onDirections, onClose,
 }: Props) {
   const { t, locale } = useLocale();
   const cat = CATEGORY_META[category] ?? CATEGORY_META.other;
   const primaryName = locale === "ar" ? nameAr : name;
-  const secondaryName = locale === "ar" ? name : nameAr;
   const floorLabel = locale === "ar" && floorNameAr ? floorNameAr : floorName;
 
   return (
-    <div className="absolute bottom-0 left-0 right-0 z-30 bg-white rounded-t-3xl shadow-2xl border-t border-slate-200 animate-in slide-in-from-bottom duration-200">
-      <div className="px-5 pt-3 pb-6">
-        {/* drag handle */}
-        <div className="w-12 h-1.5 bg-slate-200 rounded-full mx-auto mb-4" />
+    // Sit above the bottom tab bar (which occupies ~bottom-16); inset from
+    // edges so the map is still tappable around the card.
+    <div
+      className="absolute bottom-20 left-3 right-3 z-30 pointer-events-none"
+      dir={locale === "ar" ? "rtl" : "ltr"}
+    >
+      <div className="relative max-w-md mx-auto pointer-events-auto animate-in slide-in-from-bottom duration-200">
+        <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 p-3 flex items-center gap-3">
+          {/* category icon */}
+          <div
+            className={`w-12 h-12 rounded-xl border-2 ${cat.tint} flex items-center justify-center text-xl font-bold flex-shrink-0`}
+          >
+            {cat.emoji}
+          </div>
 
-        {/* close */}
+          {/* name + meta (truncate so long names don't push the button off) */}
+          <div className="flex-1 min-w-0">
+            <h2 className="text-base font-bold text-slate-900 truncate leading-tight">
+              {primaryName}
+            </h2>
+            <div className="mt-0.5 flex items-center gap-1.5 text-xs text-slate-500 min-w-0">
+              <span
+                className={`px-1.5 py-0.5 rounded-full text-[10px] font-semibold border ${cat.tint} flex-shrink-0`}
+              >
+                {t(cat.tkey)}
+              </span>
+              {floorLabel && (
+                <span className="truncate flex items-center gap-1">
+                  <span className="opacity-60">·</span>
+                  <span className="truncate">{floorLabel}</span>
+                </span>
+              )}
+            </div>
+          </div>
+
+          {/* primary action — confirm and start navigating */}
+          <button
+            onClick={onDirections}
+            className="flex items-center gap-1.5 bg-blue-500 hover:bg-blue-600 active:bg-blue-700 text-white font-semibold text-sm px-4 py-2.5 rounded-xl shadow-sm flex-shrink-0 transition-colors"
+          >
+            <span>📍</span>
+            <span>{t("directions")}</span>
+          </button>
+        </div>
+
+        {/* small dismiss handle (floating corner X — doesn't take row space) */}
         <button
           onClick={onClose}
           aria-label={t("close")}
-          className="absolute top-4 right-4 w-9 h-9 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-600 flex items-center justify-center text-xl rtl:right-auto rtl:left-4"
+          className="absolute -top-2 -right-2 rtl:-right-auto rtl:-left-2 w-7 h-7 rounded-full bg-white border border-slate-300 shadow text-slate-600 hover:bg-slate-50 active:bg-slate-100 flex items-center justify-center text-sm leading-none"
         >
           ×
         </button>
-
-        {/* Hero icon */}
-        <div className={`mx-auto w-20 h-20 rounded-3xl border-2 ${cat.tint} flex items-center justify-center text-4xl font-bold mb-3`}>
-          {cat.emoji}
-        </div>
-
-        {/* Name */}
-        <h2 className="text-2xl font-bold text-slate-900 text-center" dir={locale === "ar" ? "rtl" : "ltr"}>{primaryName}</h2>
-        <p className="text-base text-slate-500 text-center mt-0.5" dir={locale === "ar" ? "ltr" : "rtl"}>{secondaryName}</p>
-
-        {/* Meta row */}
-        <div className="flex items-center justify-center gap-3 mt-3 text-sm text-slate-500">
-          <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold border ${cat.tint}`}>
-            {t(cat.tkey)}
-          </span>
-          {floorLabel && (
-            <span className="flex items-center gap-1">
-              <span>📍</span>
-              <span>{floorLabel}</span>
-            </span>
-          )}
-        </div>
-
-        {/* Actions */}
-        <div className="mt-5 space-y-2">
-          <button
-            onClick={onDirections}
-            className="w-full flex items-center justify-center gap-3 bg-blue-500 hover:bg-blue-600 active:bg-blue-700 text-white font-semibold text-lg py-4 rounded-2xl shadow-md transition-colors"
-          >
-            <span className="text-xl">📍</span>
-            <span>{t("directions")}</span>
-          </button>
-          <button
-            onClick={onClose}
-            className="w-full flex items-center justify-center gap-2 border-2 border-slate-200 hover:bg-slate-50 active:bg-slate-100 text-slate-700 font-medium py-3 rounded-2xl"
-          >
-            <span>{t("cancel")}</span>
-          </button>
-        </div>
       </div>
     </div>
   );
