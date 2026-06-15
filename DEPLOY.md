@@ -84,6 +84,32 @@ avoiding here. If you want TLS, point your server's **existing** reverse proxy
 (the one already using 80/443) at `http://127.0.0.1:<HTTP_PORT>`. The app is
 same-origin, so no extra config is needed.
 
+### Subdomain via existing nginx (optional)
+
+A ready-to-use nginx server block lives at
+[nginx/wain.baabsayer.sa.conf](nginx/wain.baabsayer.sa.conf). It terminates TLS
+on the host, proxies everything to Wain's Caddy at `127.0.0.1:8787`, and keeps
+all your other vhosts on the same nginx untouched.
+
+```bash
+# 1. Tell Wain to bake the subdomain into the front-end
+sed -i 's|^NEXT_PUBLIC_API_URL=.*|NEXT_PUBLIC_API_URL=https://wain.baabsayer.sa/api|' .env
+sed -i 's|^APP_BASE_URL=.*|APP_BASE_URL=https://wain.baabsayer.sa|'                    .env
+docker compose up -d --build web admin
+
+# 2. Drop the server block into nginx and reload
+sudo cp nginx/wain.baabsayer.sa.conf /etc/nginx/sites-available/
+sudo ln -sf /etc/nginx/sites-available/wain.baabsayer.sa.conf \
+            /etc/nginx/sites-enabled/wain.baabsayer.sa.conf
+sudo certbot --nginx -d wain.baabsayer.sa       # first time only
+sudo nginx -t && sudo systemctl reload nginx
+```
+
+Then `https://wain.baabsayer.sa/` is the visitor app, `/api/*` is the API, and
+your obscure admin path keeps working under the new domain. Nothing about the
+Docker stack changes — Caddy still serves `:8787` on the loopback; you can drop
+the subdomain anytime by removing the nginx block.
+
 ---
 
 ## Day-2 operations
