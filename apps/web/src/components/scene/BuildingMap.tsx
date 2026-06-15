@@ -74,9 +74,13 @@ export interface BuildingMapHandle {
 // ─── LEAP palette ─────────────────────────────────────────────────────────────
 const BACKGROUND = "#f0e9da";   // cream outside
 const FLOOR_COLOR = "#fbf8f3";  // warm off-white interior
-const DEFAULT_BLOCK_COLOR = "#eef1f6"; // clean cool light-gray (LEAP white booths)
+const DEFAULT_BLOCK_COLOR = "#eef1f6"; // fallback when a block has no color set
 const HOVER_COLOR = "#93c5fd";         // light blue highlight on hover
-const CATEGORY_HIGHLIGHT_COLOR = "#f59e0b"; // amber — units matching the active category filter
+// Reserved system color for the category-filter highlight. Chosen so it is NOT
+// in the admin's room-color palette (`apps/admin/src/components/map-builder/
+// PropertiesPanel.tsx` COLORS / `BulkEditPanel.tsx` COLORS) — that way no room
+// can ever share the highlight color and the filter stays unambiguous.
+const CATEGORY_HIGHLIGHT_COLOR = "#fbbf24";
 const DEST_COLOR = "#7c3aed";
 const SELECTED_COLOR = "#ec4899";
 const ROUTE_COLOR = "#4f9df8";  // bright royal-blue ribbon (LEAP)
@@ -243,16 +247,18 @@ const BuildingMap = forwardRef<BuildingMapHandle, Props>(function BuildingMap(
     };
   }, [toLngLat, floorWidth, floorHeight]);
 
-  // LEAP-style: clean white blocks; colour only for highlights. Department colour
-  // is carried by the zone pills (DOM markers), not the blocks.
-  // Priority: destination → selected → category filter → hover (feature-state) → default.
+  // Per-block colour comes from the admin's stored `color` field on each store;
+  // system states override it in priority order:
+  //   destination → selected → category filter → hover → block's own color.
+  // The string fallback at the end of `coalesce` covers blocks that never had
+  // a color set (older data) so the expression always resolves to a valid hex.
   const colorExpr = useMemo(() => ([
     "case",
     ["==", ["get", "id"], destinationId ?? "__none__"], DEST_COLOR,
     ["==", ["get", "id"], selectedId ?? "__none__"], SELECTED_COLOR,
     ["==", ["get", "category"], highlightCategory ?? "__none__"], CATEGORY_HIGHLIGHT_COLOR,
     ["boolean", ["feature-state", "hover"], false], HOVER_COLOR,
-    DEFAULT_BLOCK_COLOR,
+    ["coalesce", ["get", "color"], DEFAULT_BLOCK_COLOR],
   ] as any), [destinationId, selectedId, highlightCategory]);
 
   // ── Initialise the map once ────────────────────────────────────────────────
