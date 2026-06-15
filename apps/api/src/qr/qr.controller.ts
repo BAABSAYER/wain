@@ -1,6 +1,10 @@
-import { Controller, Get, Post, Delete, Param, Body, Query } from "@nestjs/common";
-import { ApiTags, ApiQuery } from "@nestjs/swagger";
+import { Controller, Get, Post, Delete, Param, Body, Req } from "@nestjs/common";
+import { ApiTags } from "@nestjs/swagger";
 import { QrService } from "./qr.service";
+
+// Minimal local Request shape (avoids depending on @types/express). All we
+// need is the proxy headers used to auto-detect the public domain.
+type Request = { headers: Record<string, string | string[] | undefined> };
 import { IsString, IsOptional } from "class-validator";
 import { ApiProperty } from "@nestjs/swagger";
 
@@ -12,20 +16,54 @@ class CreateQrDto {
   @ApiProperty({ required: false }) @IsString() @IsOptional() appBaseUrl?: string;
 }
 
+/**
+ * Resolve the public base URL for QR codes, in this order:
+ *   1. caller-supplied override (dto.appBaseUrl)
+ *   2. auto-detect from the request's reverse-proxy headers
+ *      (X-Forwarded-Proto + X-Forwarded-Host, or Host) — so a QR generated
+ *      while the admin is at https://wain.baabsayer.sa ALWAYS encodes that
+ *      same domain, no env changes required when the domain changes
+ *   3. APP_BASE_URL env (legacy fallback)
+ *   4. localhost (dev fallback)
+ */
+function resolveAppBaseUrl(req: Request, override?: string): string {
+  if (override) return override;
+  const proto = (req.headers["x-forwarded-proto"] as string)?.split(",")[0]?.trim();
+  const host  = (req.headers["x-forwarded-host"] as string)?.split(",")[0]?.trim()
+             || (req.headers["host"] as string | undefined);
+  if (host) return `${proto || "http"}://${host}`;
+  return process.env.APP_BASE_URL ?? "http://localhost:3000";
+}
+
 @ApiTags("qr")
 @Controller("qr")
 export class QrController {
   constructor(private readonly svc: QrService) {}
 
   @Post()
-  create(@Body() dto: CreateQrDto) {
+  create(@Body() dto: CreateQrDto, @Req() req: Request) {
     return this.svc.create(
       dto.buildingId,
       dto.floorId,
       dto.nodeId,
       dto.label ?? "",
-      dto.appBaseUrl ?? process.env.APP_BASE_URL ?? "http://localhost:3000",
+      resolveAppBaseUrl(req, dto.appBaseUrl),
     );
+  }
+
+  /**
+   * Bulk-rebuild every QR PNG for a building using the CURRENT request's
+   * domain (or an explicit `?appBaseUrl=...`). Use this once after moving
+   * to a new domain — the URL embedded in every existing QR gets updated
+   * in place.
+   */
+  @Post("regenerate/:buildingId")
+  regenerate(
+    @Param("buildingId") buildingId: string,
+    @Req() req: Request,
+    @Body() body?: { appBaseUrl?: string },
+  ) {
+    return this.svc.regenerateForBuilding(buildingId, resolveAppBaseUrl(req, body?.appBaseUrl));
   }
 
   @Get("building/:buildingId") findByBuilding(@Param("buildingId") id: string) { return this.svc.findByBuilding(id); }

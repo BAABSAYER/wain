@@ -44,4 +44,24 @@ export class QrService {
   async remove(id: string) {
     return this.prisma.qRPoint.delete({ where: { id } });
   }
+
+  /**
+   * Re-bake the QR PNG for every QR record on a building using the given
+   * appBaseUrl. The QR `code` (the short string used by /qr/resolve) stays
+   * the same, so any QR already printed and physically stuck on a wall keeps
+   * working — only the URL embedded in the rendered image changes.
+   */
+  async regenerateForBuilding(buildingId: string, appBaseUrl: string) {
+    const qrs = await this.prisma.qRPoint.findMany({ where: { buildingId } });
+    for (const qr of qrs) {
+      const url = `${appBaseUrl}/nav/${qr.buildingId}/${qr.floorId}/${qr.nodeId}`;
+      const qrImageUrl = await QRCode.toDataURL(url, {
+        errorCorrectionLevel: "M",
+        width: 512,
+        color: { dark: "#0f172a", light: "#ffffff" },
+      });
+      await this.prisma.qRPoint.update({ where: { id: qr.id }, data: { qrImageUrl } });
+    }
+    return { buildingId, appBaseUrl, regenerated: qrs.length };
+  }
 }
