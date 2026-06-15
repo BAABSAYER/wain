@@ -55,11 +55,11 @@ export default function MapCanvas({
   const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
 
   const {
-    tool, selectedId, selectedKind, stores, nodes, edges,
+    tool, selectedId, selectedKind, extraSelectedIds, stores, nodes, edges,
     activePolygon, activePreset,
     addPolygonPoint, commitPolygon, clearActivePolygon,
     addNode, addEdge, addPresetStore, setActivePreset,
-    setSelected, setTool, updateStore,
+    setSelected, setTool, updateStore, toggleExtraSelection,
   } = useMapBuilderStore();
 
   // Center the floor in the viewport on initial mount
@@ -147,8 +147,12 @@ export default function MapCanvas({
 
   const handleStoreClick = useCallback((storeId: string, e: any) => {
     e.cancelBubble = true;
-    if (tool === "select") setSelected(storeId, "store");
-  }, [tool, setSelected]);
+    if (tool !== "select") return;
+    // Shift-click adds (or removes) the room from a multi-room selection so
+    // several can be grouped at once via the bulk-edit panel.
+    if (e.evt?.shiftKey) toggleExtraSelection(storeId);
+    else setSelected(storeId, "store");
+  }, [tool, setSelected, toggleExtraSelection]);
 
   const handleMouseMove = useCallback(() => {
     if (tool === "polygon" || (tool === "edge" && edgeStart)) {
@@ -274,8 +278,12 @@ export default function MapCanvas({
         {/* Rooms layer */}
         <Layer>
           {stores.map((store) => {
-            const isSel = selectedKind === "store" && selectedId === store.id;
-            const canDragShape = tool === "select" && isSel;
+            const isPrimary = selectedKind === "store" && selectedId === store.id;
+            const isExtra = selectedKind === "store" && extraSelectedIds.includes(store.id);
+            const isSel = isPrimary || isExtra;
+            // Whole-shape drag only the primary so multi-select stays a
+            // batch-edit gesture — moving a group at once is a separate feature.
+            const canDragShape = tool === "select" && isPrimary;
             return (
               <Group key={store.id}>
                 <Line

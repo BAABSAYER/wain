@@ -8,6 +8,8 @@ interface MapBuilderState {
   tool: DrawTool;
   selectedId: string | null;
   selectedKind: SelectionKind;
+  /** Additional rooms shift-clicked to form a multi-selection for bulk edits. */
+  extraSelectedIds: string[];
   stores: CanvasStore[];
   nodes: CanvasNode[];
   edges: CanvasEdge[];
@@ -19,6 +21,9 @@ interface MapBuilderState {
 
   setTool: (tool: DrawTool) => void;
   setSelected: (id: string | null, kind?: SelectionKind) => void;
+  /** Shift-click on a room: add/remove it from the extra multi-selection. */
+  toggleExtraSelection: (id: string) => void;
+  clearExtraSelection: () => void;
 
   addPolygonPoint: (pt: { x: number; y: number }) => void;
   commitPolygon: (store: Omit<CanvasStore, "polygon">) => void;
@@ -45,6 +50,7 @@ export const useMapBuilderStore = create<MapBuilderState>((set) => ({
   tool: "select",
   selectedId: null,
   selectedKind: null,
+  extraSelectedIds: [],
   stores: [],
   nodes: [],
   edges: [],
@@ -59,8 +65,34 @@ export const useMapBuilderStore = create<MapBuilderState>((set) => ({
     activePreset: null,
     selectedId: null,
     selectedKind: null,
+    extraSelectedIds: [],
   }),
-  setSelected: (id, kind = null) => set({ selectedId: id, selectedKind: id ? kind : null }),
+  setSelected: (id, kind = null) =>
+    set({ selectedId: id, selectedKind: id ? kind : null, extraSelectedIds: [] }),
+  toggleExtraSelection: (id) =>
+    set((s) => {
+      // Toggling the primary just promotes the first extra to primary (or clears
+      // everything if there is none) — keeps the "remove this room from the
+      // selection" gesture intuitive.
+      if (s.selectedId === id) {
+        const [next, ...rest] = s.extraSelectedIds;
+        return next
+          ? { selectedId: next, selectedKind: "store" as const, extraSelectedIds: rest }
+          : { selectedId: null, selectedKind: null, extraSelectedIds: [] };
+      }
+      const present = s.extraSelectedIds.includes(id);
+      const extraSelectedIds = present
+        ? s.extraSelectedIds.filter((x) => x !== id)
+        : [...s.extraSelectedIds, id];
+      // If there is no primary yet, promote this click to primary.
+      if (!s.selectedId) {
+        return present
+          ? { selectedId: null, selectedKind: null, extraSelectedIds }
+          : { selectedId: id, selectedKind: "store" as const, extraSelectedIds: s.extraSelectedIds };
+      }
+      return { extraSelectedIds };
+    }),
+  clearExtraSelection: () => set({ extraSelectedIds: [] }),
 
   addPolygonPoint: (pt) =>
     set((s) => ({ activePolygon: [...s.activePolygon, pt] })),
@@ -124,11 +156,12 @@ export const useMapBuilderStore = create<MapBuilderState>((set) => ({
       stores: s.stores.filter((st) => st.id !== id),
       selectedId: s.selectedId === id ? null : s.selectedId,
       selectedKind: s.selectedId === id ? null : s.selectedKind,
+      extraSelectedIds: s.extraSelectedIds.filter((x) => x !== id),
       isDirty: true,
     })),
 
   loadFromApi: (stores, nodes, edges) =>
-    set({ stores, nodes, edges, isDirty: false, selectedId: null, selectedKind: null, activePreset: null }),
+    set({ stores, nodes, edges, isDirty: false, selectedId: null, selectedKind: null, extraSelectedIds: [], activePreset: null }),
 
   markClean: () => set({ isDirty: false }),
 }));

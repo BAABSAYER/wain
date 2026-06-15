@@ -1,5 +1,6 @@
 "use client";
 import { useMapBuilderStore } from "@/store/map-builder";
+import BulkEditPanel from "./BulkEditPanel";
 import type { StoreCategory } from "@wain/types";
 
 const CATEGORIES: StoreCategory[] = [
@@ -19,9 +20,14 @@ const COLORS = [
 
 export default function PropertiesPanel() {
   const {
-    selectedId, selectedKind, stores, nodes, edges,
+    selectedId, selectedKind, extraSelectedIds, stores, nodes, edges,
     updateStore, removeStore, updateNode, removeNode, removeEdge,
   } = useMapBuilderStore();
+
+  // 2+ rooms selected → switch the panel to bulk-group mode.
+  if (selectedKind === "store" && extraSelectedIds.length > 0 && selectedId) {
+    return <BulkEditPanel selectedIds={[selectedId, ...extraSelectedIds]} />;
+  }
 
   if (!selectedId) {
     return (
@@ -29,6 +35,7 @@ export default function PropertiesPanel() {
         <p>Select an element to edit its properties.</p>
         <ul className="mt-3 text-xs text-slate-400 space-y-1 leading-relaxed">
           <li>• Click a <b className="text-slate-600">room</b> to rename or recolor it.</li>
+          <li>• <kbd className="px-1.5 py-0.5 bg-slate-100 border border-slate-200 rounded text-[10px]">Shift</kbd> + click rooms to <b className="text-slate-600">group</b> them into a department.</li>
           <li>• Click a <b className="text-slate-600">node</b> to change its type.</li>
           <li>• Click an <b className="text-slate-600">edge</b> (line between nodes) to remove it.</li>
         </ul>
