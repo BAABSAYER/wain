@@ -38,14 +38,20 @@ Set:
 
 - `HTTP_PORT` — any free port (e.g. `8787`, `19090`, …).
 - `ADMIN_BASE_PATH` — your own random path, leading `/`, e.g. `/console-9f3k2x`.
-- `NEXT_PUBLIC_API_URL` = `http://<server-ip-or-host>:<HTTP_PORT>/api`
+- `NEXT_PUBLIC_API_URL` = `/api` (the recommended default — works for any
+  reverse-proxy / subdomain / IP without rebuilding)
 - `APP_BASE_URL` = `http://<server-ip-or-host>:<HTTP_PORT>`
 - `POSTGRES_PASSWORD` and the password inside `DATABASE_URL` — **same value**.
 - `AUTH_SECRET`, `ADMIN_PASSWORD` — strong secrets (`openssl rand -hex 32`).
 
-> ⚠️ `NEXT_PUBLIC_API_URL`, `APP_BASE_URL`, `ADMIN_BASE_PATH`, `HTTP_PORT` are
-> **baked into the web/admin images at build time**. If you change any of them
-> later, rebuild: `docker compose up -d --build`.
+> ℹ️ Only `ADMIN_BASE_PATH` is baked into the web/admin images at build time
+> (the secret admin URL). `NEXT_PUBLIC_API_URL` defaults to `/api` (relative)
+> so the front-end doesn't care about the domain/IP/port — change `APP_BASE_URL`
+> or `HTTP_PORT` without rebuilding; only changing `ADMIN_BASE_PATH` needs
+> `docker compose up -d --build`.
+>
+> Stuck after a bad build? Use `bash scripts/patch-baked-url.sh` — it patches
+> the running bundle in seconds (no rebuild).
 
 ## 3. Deploy — one command
 
@@ -92,10 +98,10 @@ on the host, proxies everything to Wain's Caddy at `127.0.0.1:8787`, and keeps
 all your other vhosts on the same nginx untouched.
 
 ```bash
-# 1. Tell Wain to bake the subdomain into the front-end
-sed -i 's|^NEXT_PUBLIC_API_URL=.*|NEXT_PUBLIC_API_URL=https://wain.baabsayer.sa/api|' .env
-sed -i 's|^APP_BASE_URL=.*|APP_BASE_URL=https://wain.baabsayer.sa|'                    .env
-docker compose up -d --build web admin
+# 1. Tell Wain about the public base URL (only APP_BASE_URL — it's runtime,
+#    no rebuild). NEXT_PUBLIC_API_URL stays as the default `/api` (relative).
+sed -i 's|^APP_BASE_URL=.*|APP_BASE_URL=https://wain.baabsayer.sa|' .env
+docker compose up -d
 
 # 2. Drop the server block into nginx and reload
 sudo cp nginx/wain.baabsayer.sa.conf /etc/nginx/sites-available/
