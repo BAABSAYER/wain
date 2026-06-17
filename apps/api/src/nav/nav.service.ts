@@ -99,6 +99,9 @@ export class NavService {
       );
     });
     this.invalidateRouting();
+    // Always return a JSON body — admin client uses res.json() and would
+    // otherwise throw "Unexpected end of JSON input" on a 201 with no body.
+    return { floorId, nodes: nodes.length, edges: edges.length };
   }
 
   private euclideanDistance(x1: number, y1: number, x2: number, y2: number) {
