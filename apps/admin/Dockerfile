@@ -14,6 +14,7 @@ COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY apps/api/package.json       apps/api/package.json
 COPY apps/web/package.json       apps/web/package.json
 COPY apps/admin/package.json     apps/admin/package.json
+COPY apps/admin/scripts/copy-ifc-wasm.mjs apps/admin/scripts/copy-ifc-wasm.mjs
 COPY packages/db/package.json    packages/db/package.json
 COPY packages/routing/package.json packages/routing/package.json
 COPY packages/types/package.json   packages/types/package.json
