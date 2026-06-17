@@ -38,15 +38,37 @@ export class StoresService {
     return store;
   }
 
+  private async validNavNodeIds(floorId: string, navNodeIds: string[]) {
+    const unique = [...new Set(navNodeIds.filter(Boolean))];
+    if (unique.length === 0) return [];
+
+    const nodes = await this.prisma.navNode.findMany({
+      where: { floorId, id: { in: unique } },
+      select: { id: true },
+    });
+    const valid = new Set(nodes.map((n) => n.id));
+    return unique.filter((id) => valid.has(id));
+  }
+
+  private async cleanStoreDto(dto: CreateStoreDto, floorId: string): Promise<CreateStoreDto>;
+  private async cleanStoreDto(dto: Partial<CreateStoreDto>, floorId: string): Promise<Partial<CreateStoreDto>>;
+  private async cleanStoreDto(dto: Partial<CreateStoreDto>, floorId: string) {
+    if (dto.navNodeId === undefined) return dto;
+    const [validNavNodeId] = await this.validNavNodeIds(floorId, [dto.navNodeId]);
+    return { ...dto, navNodeId: validNavNodeId ?? null };
+  }
+
   async create(dto: CreateStoreDto) {
-    const store = await this.prisma.store.create({ data: { ...dto, polygon: dto.polygon as any } });
+    const clean = await this.cleanStoreDto(dto, dto.floorId);
+    const store = await this.prisma.store.create({ data: { ...clean, polygon: clean.polygon as any } });
     this.cache.delByPrefix("route:");
     return store;
   }
 
   async update(id: string, dto: Partial<CreateStoreDto>) {
-    await this.findOne(id);
-    const { polygon, ...rest } = dto;
+    const existing = await this.findOne(id);
+    const clean = await this.cleanStoreDto(dto, existing.floorId);
+    const { polygon, ...rest } = clean;
     const store = await this.prisma.store.update({
       where: { id },
       data: polygon ? { ...rest, polygon: polygon as any } : rest,
@@ -68,19 +90,19 @@ export class StoresService {
    * is empty) so any older code reading navNodeId still works.
    */
   async setNavLinks(storeId: string, navNodeIds: string[]) {
-    await this.findOne(storeId);
-    const unique = [...new Set(navNodeIds.filter(Boolean))];
+    const store = await this.findOne(storeId);
+    const valid = await this.validNavNodeIds(store.floorId, navNodeIds);
     await this.prisma.$transaction(async (tx) => {
       await tx.storeNavLink.deleteMany({ where: { storeId } });
-      if (unique.length > 0) {
+      if (valid.length > 0) {
         await tx.storeNavLink.createMany({
-          data: unique.map((navNodeId) => ({ storeId, navNodeId })),
+          data: valid.map((navNodeId) => ({ storeId, navNodeId })),
           skipDuplicates: true,
         });
       }
       await tx.store.update({
         where: { id: storeId },
-        data: { navNodeId: unique[0] ?? null },
+        data: { navNodeId: valid[0] ?? null },
       });
     });
     this.cache.delByPrefix("route:");
