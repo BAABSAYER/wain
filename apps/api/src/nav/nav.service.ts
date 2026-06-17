@@ -68,33 +68,61 @@ export class NavService {
     nodes: Array<{ id?: string; x: number; y: number; type: string }>,
     edges: Array<{ fromId: string; toId: string }>,
   ) {
-    // First: NULL out any Store.navNodeId on this floor so we can safely
-    // delete + recreate nodes (FK relation is RESTRICT by default; without
-    // this any linked store blocks the deleteMany).
+    // UPSERT semantics, not delete+recreate. Nodes that existed and are still
+    // in the incoming list keep their DB ids; new ones get fresh ids; ones
+    // that disappeared get deleted (cleanly nulling any Store.navNodeId that
+    // pointed at them). This preserves Store→NavNode links across saves so
+    // the admin's nodeIdMap remap is just an identity map for existing rows.
+    const existing = await this.prisma.navNode.findMany({ where: { floorId } });
+    const existingIds = new Set(existing.map((n) => n.id));
+    const incomingExistingIds = new Set(
+      nodes.filter((n) => n.id && existingIds.has(n.id)).map((n) => n.id!),
+    );
+    const toDelete = [...existingIds].filter((id) => !incomingExistingIds.has(id));
+
     let idMapObj: Record<string, string> = {};
     await this.prisma.$transaction(async (tx) => {
-      await tx.store.updateMany({ where: { floorId }, data: { navNodeId: null } });
+      // Clear FKs into nodes that are about to disappear so the deleteMany
+      // doesn't get blocked by RESTRICT.
+      if (toDelete.length > 0) {
+        await tx.store.updateMany({
+          where: { navNodeId: { in: toDelete } },
+          data: { navNodeId: null },
+        });
+      }
+      // Edges always get rebuilt — they're cheap, and their ids don't
+      // matter to anyone outside the routing engine.
       await tx.navEdge.deleteMany({ where: { fromNode: { floorId } } });
-      await tx.navNode.deleteMany({ where: { floorId } });
+      if (toDelete.length > 0) {
+        await tx.navNode.deleteMany({ where: { id: { in: toDelete } } });
+      }
 
-      const created = await Promise.all(
-        nodes.map((n) =>
-          tx.navNode.create({
+      // Apply updates / creates. Build the id map as we go.
+      const idMap = new Map<string, string>();
+      for (const n of nodes) {
+        if (n.id && existingIds.has(n.id)) {
+          await tx.navNode.update({
+            where: { id: n.id },
+            data: { x: n.x, y: n.y, type: n.type, z: 0 },
+          });
+          idMap.set(n.id, n.id); // identity — link survives
+        } else {
+          const created = await tx.navNode.create({
             data: { floorId, x: n.x, y: n.y, type: n.type, z: 0 },
-          }),
-        ),
-      );
-
-      const idMap = new Map(nodes.map((n, i) => [n.id ?? String(i), created[i].id]));
+          });
+          idMap.set(n.id ?? `__idx_${idMap.size}`, created.id);
+        }
+      }
       idMapObj = Object.fromEntries(idMap);
 
+      // Recreate edges using the (mostly identity) id map.
       await Promise.all(
         edges.map((e) => {
           const fromId = idMap.get(e.fromId);
           const toId = idMap.get(e.toId);
           if (!fromId || !toId) return null;
-          const fromNode = nodes.find((n) => n.id === e.fromId || nodes.indexOf(n) === Number(e.fromId));
-          const toNode = nodes.find((n) => n.id === e.toId || nodes.indexOf(n) === Number(e.toId));
+          const fromNode = nodes.find((n) => n.id === e.fromId);
+          const toNode = nodes.find((n) => n.id === e.toId);
           const dist = fromNode && toNode
             ? this.euclideanDistance(fromNode.x, fromNode.y, toNode.x, toNode.y)
             : 1;
@@ -105,13 +133,13 @@ export class NavService {
       );
     });
     this.invalidateRouting();
-    // nodeIdMap lets the admin client rebind every Store.navNodeId after a
-    // save — without it, links break on the very first save because the
-    // delete+create assigns brand-new ids to every node.
     return {
       floorId,
       nodes: nodes.length,
       edges: edges.length,
+      // Mostly identity now (existing ids → themselves); only newly-created
+      // nodes show a different value. Kept for backward compatibility with
+      // the admin's remap loop, which becomes a no-op for unchanged nodes.
       nodeIdMap: idMapObj,
     };
   }
