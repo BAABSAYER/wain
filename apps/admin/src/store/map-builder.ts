@@ -4,6 +4,14 @@ import type { DrawTool, CanvasStore, CanvasNode, CanvasEdge } from "@wain/types"
 
 export type SelectionKind = "store" | "node" | "edge" | null;
 
+/** Frozen snapshot of the geometry; what undo / redo restore. */
+interface HistorySnapshot {
+  stores: CanvasStore[];
+  nodes: CanvasNode[];
+  edges: CanvasEdge[];
+}
+const HISTORY_LIMIT = 50;
+
 interface MapBuilderState {
   tool: DrawTool;
   selectedId: string | null;
@@ -43,6 +51,19 @@ interface MapBuilderState {
 
   updateStore: (id: string, patch: Partial<CanvasStore>) => void;
   removeStore: (id: string) => void;
+  /** Move room to the very top of the z-stack (rendered last). */
+  bringStoreToFront: (id: string) => void;
+  /** Move room to the very bottom of the z-stack (rendered first). */
+  sendStoreToBack: (id: string) => void;
+
+  // ── Undo / Redo ────────────────────────────────────────────────────────
+  past: HistorySnapshot[];
+  future: HistorySnapshot[];
+  /** Call BEFORE a discrete user action (or before a drag) so undo restores
+   *  the state from right before that action. */
+  pushSnapshot: () => void;
+  undo: () => void;
+  redo: () => void;
 
   loadFromApi: (stores: CanvasStore[], nodes: CanvasNode[], edges: CanvasEdge[]) => void;
   markClean: () => void;
@@ -60,6 +81,8 @@ export const useMapBuilderStore = create<MapBuilderState>((set) => ({
   activePolygon: [],
   activePreset: null,
   isDirty: false,
+  past: [],
+  future: [],
 
   setTool: (tool) => set({
     tool,
@@ -167,8 +190,83 @@ export const useMapBuilderStore = create<MapBuilderState>((set) => ({
       isDirty: true,
     })),
 
+  bringStoreToFront: (id) =>
+    set((s) => {
+      const target = s.stores.find((st) => st.id === id);
+      if (!target) return s;
+      return {
+        stores: [...s.stores.filter((st) => st.id !== id), target],
+        isDirty: true,
+      };
+    }),
+
+  sendStoreToBack: (id) =>
+    set((s) => {
+      const target = s.stores.find((st) => st.id === id);
+      if (!target) return s;
+      return {
+        stores: [target, ...s.stores.filter((st) => st.id !== id)],
+        isDirty: true,
+      };
+    }),
+
+  pushSnapshot: () =>
+    set((s) => ({
+      past: [...s.past, { stores: s.stores, nodes: s.nodes, edges: s.edges }].slice(-HISTORY_LIMIT),
+      future: [],
+    })),
+
+  undo: () =>
+    set((s) => {
+      if (s.past.length === 0) return s;
+      const previous = s.past[s.past.length - 1];
+      const current: HistorySnapshot = { stores: s.stores, nodes: s.nodes, edges: s.edges };
+      return {
+        past: s.past.slice(0, -1),
+        future: [current, ...s.future].slice(0, HISTORY_LIMIT),
+        stores: previous.stores,
+        nodes: previous.nodes,
+        edges: previous.edges,
+        isDirty: true,
+        // Drop selections that no longer exist post-undo.
+        selectedId: previous.stores.some((st) => st.id === s.selectedId)
+                 || previous.nodes.some((n) => n.id === s.selectedId)
+                 || previous.edges.some((e) => e.id === s.selectedId) ? s.selectedId : null,
+        selectedKind: previous.stores.some((st) => st.id === s.selectedId)
+                   || previous.nodes.some((n) => n.id === s.selectedId)
+                   || previous.edges.some((e) => e.id === s.selectedId) ? s.selectedKind : null,
+        extraSelectedIds: s.extraSelectedIds.filter((id) => previous.stores.some((st) => st.id === id)),
+      };
+    }),
+
+  redo: () =>
+    set((s) => {
+      if (s.future.length === 0) return s;
+      const next = s.future[0];
+      const current: HistorySnapshot = { stores: s.stores, nodes: s.nodes, edges: s.edges };
+      return {
+        past: [...s.past, current].slice(-HISTORY_LIMIT),
+        future: s.future.slice(1),
+        stores: next.stores,
+        nodes: next.nodes,
+        edges: next.edges,
+        isDirty: true,
+        selectedId: next.stores.some((st) => st.id === s.selectedId)
+                 || next.nodes.some((n) => n.id === s.selectedId)
+                 || next.edges.some((e) => e.id === s.selectedId) ? s.selectedId : null,
+        selectedKind: next.stores.some((st) => st.id === s.selectedId)
+                   || next.nodes.some((n) => n.id === s.selectedId)
+                   || next.edges.some((e) => e.id === s.selectedId) ? s.selectedKind : null,
+        extraSelectedIds: s.extraSelectedIds.filter((id) => next.stores.some((st) => st.id === id)),
+      };
+    }),
+
   loadFromApi: (stores, nodes, edges) =>
-    set({ stores, nodes, edges, isDirty: false, selectedId: null, selectedKind: null, extraSelectedIds: [], activePreset: null }),
+    set({
+      stores, nodes, edges, isDirty: false,
+      selectedId: null, selectedKind: null, extraSelectedIds: [],
+      activePreset: null, past: [], future: [],
+    }),
 
   markClean: () => set({ isDirty: false }),
 }));

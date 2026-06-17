@@ -69,7 +69,13 @@ export default function MapCanvas({
     setSelected, setTool, updateStore, updateNode,
     removeStore, removeNode, removeEdge,
     toggleExtraSelection, selectAllStores,
+    bringStoreToFront, sendStoreToBack,
+    pushSnapshot, undo, redo,
   } = useMapBuilderStore();
+
+  // Right-click context menu state. Anchored at screen coords from the event.
+  const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; storeId: string } | null>(null);
+  const closeCtxMenu = useCallback(() => setCtxMenu(null), []);
 
   // Center the floor in the viewport on initial mount
   useEffect(() => {
@@ -106,11 +112,12 @@ export default function MapCanvas({
     if (!clickedEmpty) return;
 
     const pos = getStagePos();
-    if (tool === "polygon") { addPolygonPoint(pos); return; }
-    if (tool === "node")    { addNode({ id: nanoid(), x: pos.x, y: pos.y, type: "path" }); return; }
+    if (tool === "polygon") { pushSnapshot(); addPolygonPoint(pos); return; }
+    if (tool === "node")    { pushSnapshot(); addNode({ id: nanoid(), x: pos.x, y: pos.y, type: "path" }); return; }
     if (tool === "shape" && activePreset) {
       const preset = findPreset(activePreset);
       if (!preset) return;
+      pushSnapshot();
       addPresetStore({
         id: nanoid(),
         name: "New Room",
@@ -123,10 +130,11 @@ export default function MapCanvas({
       // Keep the preset selected so the user can drop several in a row.
       return;
     }
-  }, [tool, activePreset, getStagePos, addPolygonPoint, addNode, addPresetStore, setSelected]);
+  }, [tool, activePreset, getStagePos, addPolygonPoint, addNode, addPresetStore, setSelected, pushSnapshot]);
 
   const handleStageDblClick = useCallback(() => {
     if (tool === "polygon" && activePolygon.length >= 3) {
+      pushSnapshot();
       commitPolygon({
         id: nanoid(),
         name: "New Room",
@@ -136,18 +144,22 @@ export default function MapCanvas({
         extrudeHeight: 5,
       });
     }
-  }, [tool, activePolygon, commitPolygon]);
+  }, [tool, activePolygon, commitPolygon, pushSnapshot]);
 
   const handleNodeClick = useCallback((nodeId: string, e: any) => {
     e.cancelBubble = true;
     if (tool === "edge") {
       if (!edgeStart) setEdgeStart(nodeId);
-      else if (edgeStart !== nodeId) { addEdge({ id: nanoid(), fromId: edgeStart, toId: nodeId }); setEdgeStart(null); }
+      else if (edgeStart !== nodeId) {
+        pushSnapshot();
+        addEdge({ id: nanoid(), fromId: edgeStart, toId: nodeId });
+        setEdgeStart(null);
+      }
       return;
     }
     if (tool === "qr") { onCreateQR?.(nodeId); return; }
     if (tool === "select") setSelected(nodeId, "node");
-  }, [tool, edgeStart, addEdge, setSelected, onCreateQR]);
+  }, [tool, edgeStart, addEdge, setSelected, onCreateQR, pushSnapshot]);
 
   const handleEdgeClick = useCallback((edgeId: string, e: any) => {
     e.cancelBubble = true;
@@ -189,9 +201,11 @@ export default function MapCanvas({
   }, []);
 
   // ── Keyboard shortcuts (Word / Canva-style) ─────────────────────────────
-  // Esc clears, Ctrl/Cmd+D duplicates, Ctrl/Cmd+A selects every room on the
-  // floor, Delete/Backspace removes the selection, Arrows nudge (Shift = 10×).
-  // Skipped while typing in inputs so the PropertiesPanel forms work as usual.
+  // Esc clears, Ctrl+Z/Y undo/redo, Ctrl+D duplicates, Ctrl+A selects every
+  // room on the floor, Delete/Backspace removes the selection, Arrows nudge
+  // (Shift = 10×). Skipped while typing in inputs so PropertiesPanel forms
+  // behave normally. Every discrete action pushes a history snapshot first
+  // so undo restores the pre-action state.
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       const tgt = e.target as HTMLElement | null;
@@ -203,10 +217,24 @@ export default function MapCanvas({
         setEdgeStart(null);
         setActivePreset(null);
         setSelected(null);
+        setCtxMenu(null);
         return;
       }
 
       const mod = e.ctrlKey || e.metaKey;
+
+      // Ctrl/Cmd+Z — undo; Ctrl/Cmd+Shift+Z (or Ctrl+Y) — redo
+      if (mod && (e.key === "z" || e.key === "Z")) {
+        e.preventDefault();
+        if (e.shiftKey) redo(); else undo();
+        return;
+      }
+      if (mod && (e.key === "y" || e.key === "Y")) {
+        e.preventDefault();
+        redo();
+        return;
+      }
+
       const selectedIds = (selectedKind === "store" && selectedId)
         ? [selectedId, ...extraSelectedIds]
         : [];
@@ -223,6 +251,7 @@ export default function MapCanvas({
         e.preventDefault();
         const OFFSET = 20;
         if (selectedIds.length > 0) {
+          pushSnapshot();
           const newIds: string[] = [];
           for (const id of selectedIds) {
             const src = stores.find((s) => s.id === id);
@@ -241,6 +270,7 @@ export default function MapCanvas({
         } else if (selectedKind === "node" && selectedId) {
           const src = nodes.find((n) => n.id === selectedId);
           if (src) {
+            pushSnapshot();
             const newId = nanoid();
             addNode({ ...src, id: newId, x: src.x + OFFSET, y: src.y + OFFSET });
             setSelected(newId, "node");
@@ -254,24 +284,30 @@ export default function MapCanvas({
       if (e.key === "Delete" || e.key === "Backspace") {
         if (selectedIds.length > 0) {
           e.preventDefault();
+          pushSnapshot();
           for (const id of selectedIds) removeStore(id);
         } else if (selectedKind === "node" && selectedId) {
           e.preventDefault();
+          pushSnapshot();
           removeNode(selectedId);
         } else if (selectedKind === "edge" && selectedId) {
           e.preventDefault();
+          pushSnapshot();
           removeEdge(selectedId);
         }
         return;
       }
 
-      // Arrow keys — nudge by 1u; Shift = 10u
+      // Arrow keys — nudge by 1u; Shift = 10u. Snapshot once per discrete
+      // press; held-key autorepeat would push many snapshots — we accept that
+      // (capped at 50 entries, oldest drops off).
       if (e.key === "ArrowLeft" || e.key === "ArrowRight" || e.key === "ArrowUp" || e.key === "ArrowDown") {
         const delta = e.shiftKey ? 10 : 1;
         const dx = e.key === "ArrowLeft" ? -delta : e.key === "ArrowRight" ? delta : 0;
         const dy = e.key === "ArrowUp"   ? -delta : e.key === "ArrowDown"  ? delta : 0;
         if (selectedIds.length > 0) {
           e.preventDefault();
+          if (!e.repeat) pushSnapshot();
           for (const id of selectedIds) {
             const s = stores.find((ss) => ss.id === id);
             if (!s) continue;
@@ -281,6 +317,7 @@ export default function MapCanvas({
           const n = nodes.find((nn) => nn.id === selectedId);
           if (n) {
             e.preventDefault();
+            if (!e.repeat) pushSnapshot();
             updateNode(selectedId, { x: n.x + dx, y: n.y + dy });
           }
         }
@@ -294,6 +331,7 @@ export default function MapCanvas({
     addPresetStore, addNode, selectAllStores,
     removeStore, removeNode, removeEdge,
     updateStore, updateNode,
+    pushSnapshot, undo, redo,
   ]);
 
   const nodeById = (id: string) => nodes.find((n) => n.id === id);
@@ -364,8 +402,27 @@ export default function MapCanvas({
     if (container) container.style.cursor = cur;
   };
 
+  // Duplicate a single room with an offset — shared by Ctrl+D and the menu.
+  const duplicateStore = useCallback((id: string) => {
+    const src = stores.find((s) => s.id === id);
+    if (!src) return null;
+    const newId = nanoid();
+    addPresetStore({
+      ...src,
+      id: newId,
+      name: `${src.name} (copy)`,
+      polygon: src.polygon.map((p) => ({ x: p.x + 20, y: p.y + 20 })),
+      navNodeId: undefined,
+    });
+    return newId;
+  }, [stores, addPresetStore]);
+
   return (
-    <div className="flex-1 overflow-hidden bg-slate-100 relative" style={{ cursor: tool === "pan" ? "grab" : "crosshair" }}>
+    <div
+      className="flex-1 overflow-hidden bg-slate-100 relative"
+      style={{ cursor: tool === "pan" ? "grab" : "crosshair" }}
+      onContextMenu={(e) => { e.preventDefault(); }}
+    >
       {/* Status banners */}
       {tool === "edge" && edgeStart && (
         <div className="absolute top-2 left-1/2 -translate-x-1/2 bg-amber-500 text-white text-xs px-3 py-1 rounded-full z-10 shadow">
@@ -440,8 +497,19 @@ export default function MapCanvas({
                   strokeWidth={isSel ? 2.5 : 1}
                   onClick={(e: any) => handleStoreClick(store.id, e)}
                   onTap={(e: any) => handleStoreClick(store.id, e)}
+                  onMouseDown={(e: any) => {
+                    // Right-click → context menu (no selection change)
+                    if (e.evt?.button === 2 && tool === "select") {
+                      e.cancelBubble = true;
+                      e.evt.preventDefault?.();
+                      if (!isPrimary) setSelected(store.id, "store");
+                      setCtxMenu({ x: e.evt.clientX, y: e.evt.clientY, storeId: store.id });
+                    }
+                  }}
                   draggable={canDragShape}
+                  onDragStart={() => { pushSnapshot(); }}
                   onDragEnd={(e: any) => handleShapeDragEnd(store.id, e)}
+                  onTransformStart={() => { pushSnapshot(); }}
                   onTransformEnd={(e: any) => handleStoreTransformEnd(store.id, e)}
                   onMouseEnter={() => canDragShape && setCursor("move")}
                   onMouseLeave={() => canDragShape && setCursor("crosshair")}
@@ -576,6 +644,7 @@ export default function MapCanvas({
                 shadowBlur={3}
                 shadowOpacity={0.18}
                 draggable
+                onDragStart={() => { pushSnapshot(); }}
                 onDragMove={(e: any) => handleVertexDrag(store.id, idx, e)}
                 onMouseEnter={() => setCursor("nwse-resize")}
                 onMouseLeave={() => setCursor("crosshair")}
@@ -611,6 +680,54 @@ export default function MapCanvas({
           />
         </Layer>
       </Stage>
+
+      {ctxMenu && (
+        <>
+          {/* Click-catcher: closes the menu on any click outside. */}
+          <div className="fixed inset-0 z-40" onMouseDown={closeCtxMenu} onContextMenu={(e) => { e.preventDefault(); closeCtxMenu(); }} />
+          <ul
+            className="fixed z-50 bg-white border border-slate-200 rounded-lg shadow-xl py-1 text-sm min-w-[180px] select-none"
+            style={{ left: ctxMenu.x, top: ctxMenu.y }}
+            onMouseDown={(e) => e.stopPropagation()}
+          >
+            <li>
+              <button
+                onClick={() => { pushSnapshot(); duplicateStore(ctxMenu.storeId); closeCtxMenu(); }}
+                className="w-full text-left px-3 py-1.5 hover:bg-slate-100 text-slate-700 flex items-center justify-between gap-3"
+              >
+                <span>Duplicate</span>
+                <span className="text-xs text-slate-400">Ctrl+D</span>
+              </button>
+            </li>
+            <li>
+              <button
+                onClick={() => { pushSnapshot(); bringStoreToFront(ctxMenu.storeId); closeCtxMenu(); }}
+                className="w-full text-left px-3 py-1.5 hover:bg-slate-100 text-slate-700"
+              >
+                Bring to Front
+              </button>
+            </li>
+            <li>
+              <button
+                onClick={() => { pushSnapshot(); sendStoreToBack(ctxMenu.storeId); closeCtxMenu(); }}
+                className="w-full text-left px-3 py-1.5 hover:bg-slate-100 text-slate-700"
+              >
+                Send to Back
+              </button>
+            </li>
+            <li className="my-1 border-t border-slate-100" />
+            <li>
+              <button
+                onClick={() => { pushSnapshot(); removeStore(ctxMenu.storeId); closeCtxMenu(); }}
+                className="w-full text-left px-3 py-1.5 hover:bg-red-50 text-red-600 flex items-center justify-between gap-3"
+              >
+                <span>Delete</span>
+                <span className="text-xs text-red-300">Del</span>
+              </button>
+            </li>
+          </ul>
+        </>
+      )}
     </div>
   );
 }

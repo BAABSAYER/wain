@@ -21,7 +21,7 @@ interface Props {
  * its own name, polygon, category, etc.; "group" = rooms with the same `zone`.
  */
 export default function BulkEditPanel({ selectedIds }: Props) {
-  const { stores, updateStore, clearExtraSelection, setSelected } = useMapBuilderStore();
+  const { stores, updateStore, clearExtraSelection, setSelected, pushSnapshot } = useMapBuilderStore();
 
   const selectedStores = useMemo(
     () => stores.filter((s) => selectedIds.includes(s.id)),
@@ -61,6 +61,7 @@ export default function BulkEditPanel({ selectedIds }: Props) {
   };
 
   const apply = () => {
+    pushSnapshot();
     for (const id of selectedIds) {
       const patch: { zone?: string; zoneAr?: string; color?: string } = {};
       if (zone) patch.zone = zone;
