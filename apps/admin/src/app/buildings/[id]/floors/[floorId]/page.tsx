@@ -86,7 +86,20 @@ export default function FloorEditorPage() {
       const graphRes = await api.bulkSaveGraph(floorId, { nodes, edges });
       const nodeIdMap = (graphRes?.nodeIdMap ?? {}) as Record<string, string>;
 
-      // 2. Save each store, mapping its in-memory navNodeId through the new
+      // 2. Delete any room that existed at load-time but isn't in the
+      //    current local state (user removed it in this session). Without
+      //    this, deletions silently bounce back on reload — looks like
+      //    "save failed" even though the API was happy.
+      const currentIds = new Set(stores.map((s) => s.id));
+      const stalePersistedIds: string[] = (floor?.stores ?? [])
+        .map((s: any) => s.id)
+        .filter((id: string) => !currentIds.has(id));
+      for (const id of stalePersistedIds) {
+        try { await api.deleteStore(id); }
+        catch (e) { console.warn(`deleteStore ${id} failed (continuing):`, e); }
+      }
+
+      // 3. Save each store, mapping its in-memory navNodeId through the new
       //    id map so the link survives the rebuild.
       for (const store of stores) {
         const mappedNavNodeId = store.navNodeId
@@ -106,7 +119,7 @@ export default function FloorEditorPage() {
       }
       markClean();
 
-      // 3. Pull the saved state back so local store / node ids are the real
+      // 4. Pull the saved state back so local store / node ids are the real
       //    server-side ones (otherwise the NEXT save would silently create
       //    duplicates from leftover local nanoids).
       await reloadFloor();
