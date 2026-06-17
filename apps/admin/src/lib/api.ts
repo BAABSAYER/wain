@@ -54,6 +54,9 @@ export const api = {
 
   // QR
   getQRCodes:  (buildingId: string)       => req<any[]>(`/qr/building/${buildingId}`),
+  /** Reassign a QR to a different (or no) nav node. The printed sticker doesn't change. */
+  reassignQR:  (id: string, patch: { nodeId?: string | null; floorId?: string; label?: string }) =>
+                                              req<any>(`/qr/${id}`, { method: "PATCH", body: JSON.stringify(patch) }),
   createQR:    (data: any)                => req<any>("/qr", { method: "POST", body: JSON.stringify(data) }),
   deleteQR:    (id: string)               => req<any>(`/qr/${id}`, { method: "DELETE" }),
 

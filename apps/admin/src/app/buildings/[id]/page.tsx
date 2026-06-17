@@ -13,7 +13,8 @@ interface QRCode {
   code: string;
   label: string;
   floorId: string;
-  nodeId: string;
+  // Null when the QR is unassigned (e.g. after its node was deleted).
+  nodeId: string | null;
   qrImageUrl?: string;
 }
 
@@ -83,6 +84,40 @@ export default function BuildingPage() {
       await refresh();
     } catch (err: any) {
       setQrError(err?.message ?? "Failed to create QR code");
+    }
+  };
+
+  // ── Reassign QR modal state ──────────────────────────────────────────
+  const [reassignQr, setReassignQr] = useState<QRCode | null>(null);
+  const [reassignNodeId, setReassignNodeId] = useState<string>("");
+  const [reassignBusy, setReassignBusy] = useState(false);
+
+  const openReassign = (qr: QRCode) => {
+    setReassignQr(qr);
+    setReassignNodeId(qr.nodeId ?? "");
+  };
+  const closeReassign = () => { setReassignQr(null); setReassignBusy(false); };
+
+  const handleReassign = async () => {
+    if (!reassignQr) return;
+    setReassignBusy(true);
+    try {
+      // Find the floor for the chosen node so QRPoint.floorId stays consistent.
+      let floorId = reassignQr.floorId;
+      if (reassignNodeId) {
+        for (const f of (building?.floors ?? [])) {
+          if ((f.navNodes ?? []).some((n: any) => n.id === reassignNodeId)) { floorId = f.id; break; }
+        }
+      }
+      const updated = await api.reassignQR(reassignQr.id, {
+        nodeId: reassignNodeId || null,
+        floorId,
+      });
+      setQrCodes((prev) => prev.map((q) => (q.id === reassignQr.id ? { ...q, ...updated } : q)));
+      closeReassign();
+    } catch (err: any) {
+      alert(`Reassign failed: ${err?.message ?? "unknown error"}`);
+      setReassignBusy(false);
     }
   };
 
@@ -289,7 +324,8 @@ export default function BuildingPage() {
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
             {qrCodes.map((qr) => {
               const floor = building.floors?.find((f: any) => f.id === qr.floorId);
-              const navUrl = `${publicAppUrl}/nav/${id}/${qr.floorId}/${qr.nodeId}`;
+              const navUrl = qr.nodeId ? `${publicAppUrl}/nav/${id}/${qr.floorId}/${qr.nodeId}` : null;
+              const scanUrl = `${publicAppUrl}/qr/${qr.code}`;
               return (
                 <div key={qr.id} className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm flex flex-col gap-2">
                   {qr.qrImageUrl && (
@@ -299,16 +335,36 @@ export default function BuildingPage() {
                     <div className="font-semibold text-slate-900 text-sm truncate">{qr.label}</div>
                     <div className="text-xs text-slate-400 truncate">{floor?.name ?? "Unknown floor"}</div>
                     <div className="text-xs text-slate-400 font-mono mt-1 truncate" title={qr.code}>{qr.code}</div>
+                    {qr.nodeId ? (
+                      <div className="text-[10px] mt-1 inline-flex items-center gap-1 text-emerald-700 bg-emerald-50 border border-emerald-200 rounded px-1.5 py-0.5">
+                        <span>●</span> Linked
+                      </div>
+                    ) : (
+                      <div className="text-[10px] mt-1 inline-flex items-center gap-1 text-amber-700 bg-amber-50 border border-amber-200 rounded px-1.5 py-0.5">
+                        <span>⚠</span> Unassigned — visitors see &ldquo;ask staff&rdquo;
+                      </div>
+                    )}
                   </div>
                   <div className="flex gap-2 mt-1">
-                    <a
-                      href={navUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex-1 px-2 py-1.5 text-xs font-medium text-center bg-blue-50 hover:bg-blue-100 text-blue-700 rounded border border-blue-200"
-                    >
-                      Open
-                    </a>
+                    {navUrl ? (
+                      <a
+                        href={navUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex-1 px-2 py-1.5 text-xs font-medium text-center bg-blue-50 hover:bg-blue-100 text-blue-700 rounded border border-blue-200"
+                      >
+                        Open
+                      </a>
+                    ) : (
+                      <button
+                        type="button"
+                        disabled
+                        className="flex-1 px-2 py-1.5 text-xs font-medium text-center bg-slate-50 text-slate-400 rounded border border-slate-200 cursor-not-allowed"
+                        title="No node linked"
+                      >
+                        Open
+                      </button>
+                    )}
                     {qr.qrImageUrl && (
                       <a
                         href={qr.qrImageUrl}
@@ -318,6 +374,15 @@ export default function BuildingPage() {
                         Download
                       </a>
                     )}
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => openReassign(qr)}
+                      className="flex-1 px-2 py-1.5 text-xs font-medium bg-slate-50 hover:bg-slate-100 text-slate-700 rounded border border-slate-200"
+                      title="Reassign to a different nav node (no re-print needed)"
+                    >
+                      ⇄ Reassign
+                    </button>
                     <button
                       onClick={() => handleDeleteQR(qr.id)}
                       className="px-2 py-1.5 text-xs font-medium bg-red-50 hover:bg-red-100 text-red-700 rounded border border-red-200"
@@ -345,6 +410,81 @@ export default function BuildingPage() {
           )}
         />
       </section>
+
+      {/* ───── Reassign QR modal ───── */}
+      {reassignQr && (
+        <div
+          className="fixed inset-0 z-50 bg-slate-900/40 flex items-center justify-center p-4"
+          onMouseDown={(e) => { if (e.target === e.currentTarget) closeReassign(); }}
+        >
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 flex flex-col gap-4">
+            <div>
+              <h3 className="text-lg font-semibold text-slate-900">Reassign QR code</h3>
+              <p className="text-xs text-slate-500 mt-1 leading-relaxed">
+                Point this printed sticker at a different nav node.{" "}
+                <span className="font-mono">{reassignQr.code}</span> stays the same — no
+                need to re-print.
+              </p>
+            </div>
+
+            <div className="bg-slate-50 border border-slate-200 rounded p-3 text-xs text-slate-600">
+              <div><span className="text-slate-400">Label:</span> {reassignQr.label || <span className="italic text-slate-400">(none)</span>}</div>
+              <div className="mt-1"><span className="text-slate-400">Currently linked to:</span>{" "}
+                {reassignQr.nodeId ? (
+                  <span className="font-mono break-all">{reassignQr.nodeId}</span>
+                ) : (
+                  <span className="text-amber-700 font-medium">Unassigned</span>
+                )}
+              </div>
+            </div>
+
+            <label className="flex flex-col gap-1">
+              <span className="text-xs text-slate-500 font-medium">New nav node</span>
+              <select
+                value={reassignNodeId}
+                onChange={(e) => setReassignNodeId(e.target.value)}
+                className="bg-white border border-slate-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 rounded px-3 py-2 text-sm text-slate-900 outline-none"
+              >
+                <option value="">— Unassign (visitors see &ldquo;ask staff&rdquo;) —</option>
+                {(building?.floors ?? []).map((f: any) => (
+                  ((f.navNodes ?? []).length > 0) && (
+                    <optgroup key={f.id} label={`${f.name}${f.nameAr ? ` · ${f.nameAr}` : ""}`}>
+                      {(f.navNodes ?? []).map((n: any) => (
+                        <option key={n.id} value={n.id}>
+                          {n.type} — ({Math.round(n.x)}, {Math.round(n.y)}) {n.id.slice(-6)}
+                        </option>
+                      ))}
+                    </optgroup>
+                  )
+                ))}
+              </select>
+              {Object.values(building?.floors ?? []).every((f: any) => (f.navNodes ?? []).length === 0) && (
+                <span className="text-xs text-amber-700 mt-1">
+                  No nav nodes exist on any floor — add nodes in the Map Builder first.
+                </span>
+              )}
+            </label>
+
+            <div className="flex justify-end gap-2 mt-1">
+              <button
+                type="button"
+                onClick={closeReassign}
+                className="px-4 py-2 text-sm text-slate-500 hover:text-slate-700"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleReassign}
+                disabled={reassignBusy || (reassignNodeId === (reassignQr.nodeId ?? ""))}
+                className="px-4 py-2 text-sm font-semibold bg-blue-500 hover:bg-blue-600 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-lg shadow-sm"
+              >
+                {reassignBusy ? "Saving…" : (reassignNodeId ? "Reassign" : "Unassign")}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }
