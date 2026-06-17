@@ -25,6 +25,9 @@ interface MapBuilderState {
   activePolygon: Array<{ x: number; y: number }>;
   /** When the "shape" tool is active, which preset to drop on next canvas click. */
   activePreset: string | null;
+  /** Snap drags / preset drops to the nearest 10-unit grid when true. */
+  gridSnap: boolean;
+  setGridSnap: (on: boolean) => void;
   isDirty: boolean;
 
   setTool: (tool: DrawTool) => void;
@@ -80,6 +83,7 @@ export const useMapBuilderStore = create<MapBuilderState>((set) => ({
   qrPoints: [],
   activePolygon: [],
   activePreset: null,
+  gridSnap: false,
   isDirty: false,
   past: [],
   future: [],
@@ -137,6 +141,7 @@ export const useMapBuilderStore = create<MapBuilderState>((set) => ({
   clearActivePolygon: () => set({ activePolygon: [] }),
 
   setActivePreset: (id) => set({ activePreset: id }),
+  setGridSnap: (on) => set({ gridSnap: on }),
 
   addPresetStore: (store) =>
     set((s) => ({

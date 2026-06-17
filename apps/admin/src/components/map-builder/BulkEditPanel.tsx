@@ -2,6 +2,14 @@
 import { useMemo, useState } from "react";
 import { useMapBuilderStore } from "@/store/map-builder";
 
+interface AABB {
+  id: string;
+  polygon: { x: number; y: number }[];
+  minX: number; maxX: number;
+  minY: number; maxY: number;
+  midX: number; midY: number;
+}
+
 const COLORS = [
   "#ffffff","#cbd5e1","#94a3b8","#64748b",
   "#60a5fa","#3b82f6","#0ea5e9","#06b6d4",
@@ -27,6 +35,52 @@ export default function BulkEditPanel({ selectedIds }: Props) {
     () => stores.filter((s) => selectedIds.includes(s.id)),
     [stores, selectedIds],
   );
+
+  // Axis-aligned bounding box for each selected room — used by the align /
+  // distribute tools below.
+  const aabbs: AABB[] = useMemo(() => selectedStores.map((s) => {
+    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+    for (const p of s.polygon) {
+      if (p.x < minX) minX = p.x;
+      if (p.x > maxX) maxX = p.x;
+      if (p.y < minY) minY = p.y;
+      if (p.y > maxY) maxY = p.y;
+    }
+    return {
+      id: s.id, polygon: s.polygon,
+      minX, maxX, minY, maxY,
+      midX: (minX + maxX) / 2, midY: (minY + maxY) / 2,
+    };
+  }), [selectedStores]);
+
+  const shift = (b: AABB, dx: number, dy: number) => {
+    if (dx === 0 && dy === 0) return;
+    updateStore(b.id, { polygon: b.polygon.map((p) => ({ x: p.x + dx, y: p.y + dy })) });
+  };
+
+  // ── Align / distribute actions ──────────────────────────────────────────
+  const alignLeft   = () => { pushSnapshot(); const t = Math.min(...aabbs.map((b) => b.minX)); for (const b of aabbs) shift(b, t - b.minX, 0); };
+  const alignRight  = () => { pushSnapshot(); const t = Math.max(...aabbs.map((b) => b.maxX)); for (const b of aabbs) shift(b, t - b.maxX, 0); };
+  const alignCenterH= () => { pushSnapshot(); const t = aabbs.reduce((s, b) => s + b.midX, 0) / aabbs.length; for (const b of aabbs) shift(b, t - b.midX, 0); };
+  const alignTop    = () => { pushSnapshot(); const t = Math.min(...aabbs.map((b) => b.minY)); for (const b of aabbs) shift(b, 0, t - b.minY); };
+  const alignBottom = () => { pushSnapshot(); const t = Math.max(...aabbs.map((b) => b.maxY)); for (const b of aabbs) shift(b, 0, t - b.maxY); };
+  const alignMiddleV= () => { pushSnapshot(); const t = aabbs.reduce((s, b) => s + b.midY, 0) / aabbs.length; for (const b of aabbs) shift(b, 0, t - b.midY); };
+  const distributeH = () => {
+    if (aabbs.length < 3) return;
+    pushSnapshot();
+    const sorted = [...aabbs].sort((a, b) => a.midX - b.midX);
+    const first = sorted[0].midX, last = sorted[sorted.length - 1].midX;
+    const step = (last - first) / (sorted.length - 1);
+    for (let i = 1; i < sorted.length - 1; i++) shift(sorted[i], (first + i * step) - sorted[i].midX, 0);
+  };
+  const distributeV = () => {
+    if (aabbs.length < 3) return;
+    pushSnapshot();
+    const sorted = [...aabbs].sort((a, b) => a.midY - b.midY);
+    const first = sorted[0].midY, last = sorted[sorted.length - 1].midY;
+    const step = (last - first) / (sorted.length - 1);
+    for (let i = 1; i < sorted.length - 1; i++) shift(sorted[i], 0, (first + i * step) - sorted[i].midY);
+  };
 
   // Read current state of the selection to decide what to prefill.
   const uniqueZones = useMemo(
@@ -96,6 +150,33 @@ export default function BulkEditPanel({ selectedIds }: Props) {
             Current zones: {uniqueZones.map((z) => z || "(none)").join(" · ")}
           </p>
         )}
+      </div>
+
+      {/* Align / distribute (Canva-style) */}
+      <div>
+        <p className="text-xs text-slate-500 font-medium mb-1.5">Arrange</p>
+        <div className="grid grid-cols-3 gap-1 mb-1.5">
+          <button onClick={alignLeft}    title="Align left edges"     className="px-2 py-1.5 text-xs bg-white hover:bg-slate-100 border border-slate-200 rounded text-slate-700">⫷ Left</button>
+          <button onClick={alignCenterH} title="Center horizontally"  className="px-2 py-1.5 text-xs bg-white hover:bg-slate-100 border border-slate-200 rounded text-slate-700">⊕ Center</button>
+          <button onClick={alignRight}   title="Align right edges"    className="px-2 py-1.5 text-xs bg-white hover:bg-slate-100 border border-slate-200 rounded text-slate-700">Right ⫸</button>
+          <button onClick={alignTop}     title="Align top edges"      className="px-2 py-1.5 text-xs bg-white hover:bg-slate-100 border border-slate-200 rounded text-slate-700">⫶ Top</button>
+          <button onClick={alignMiddleV} title="Center vertically"    className="px-2 py-1.5 text-xs bg-white hover:bg-slate-100 border border-slate-200 rounded text-slate-700">⊕ Middle</button>
+          <button onClick={alignBottom}  title="Align bottom edges"   className="px-2 py-1.5 text-xs bg-white hover:bg-slate-100 border border-slate-200 rounded text-slate-700">Bottom ⫶</button>
+        </div>
+        <div className="grid grid-cols-2 gap-1">
+          <button
+            onClick={distributeH}
+            disabled={aabbs.length < 3}
+            title="Distribute horizontally (needs 3+ rooms)"
+            className="px-2 py-1.5 text-xs bg-white hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed border border-slate-200 rounded text-slate-700"
+          >↔ Distribute</button>
+          <button
+            onClick={distributeV}
+            disabled={aabbs.length < 3}
+            title="Distribute vertically (needs 3+ rooms)"
+            className="px-2 py-1.5 text-xs bg-white hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed border border-slate-200 rounded text-slate-700"
+          >↕ Distribute</button>
+        </div>
       </div>
 
       {/* Existing-zone quick picks */}

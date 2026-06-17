@@ -29,6 +29,7 @@ import useImage from "use-image";
 import { useMapBuilderStore } from "@/store/map-builder";
 import { findPreset } from "./shape-presets";
 import { nanoid } from "./nanoid";
+import { copyToClipboard, pasteFromClipboard } from "./clipboard";
 
 interface Props {
   floorPlanUrl?: string;
@@ -71,7 +72,12 @@ export default function MapCanvas({
     toggleExtraSelection, selectAllStores,
     bringStoreToFront, sendStoreToBack,
     pushSnapshot, undo, redo,
+    gridSnap, setGridSnap,
   } = useMapBuilderStore();
+
+  // Snap a single value (or 2D point) to the nearest grid step. No-op when
+  // grid-snap is off so dragging stays smooth/free.
+  const snap = useCallback((v: number) => (gridSnap ? Math.round(v / 10) * 10 : v), [gridSnap]);
 
   // Right-click context menu state. Anchored at screen coords from the event.
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; storeId: string } | null>(null);
@@ -111,7 +117,8 @@ export default function MapCanvas({
     }
     if (!clickedEmpty) return;
 
-    const pos = getStagePos();
+    const raw = getStagePos();
+    const pos = { x: snap(raw.x), y: snap(raw.y) };
     if (tool === "polygon") { pushSnapshot(); addPolygonPoint(pos); return; }
     if (tool === "node")    { pushSnapshot(); addNode({ id: nanoid(), x: pos.x, y: pos.y, type: "path" }); return; }
     if (tool === "shape" && activePreset) {
@@ -130,7 +137,7 @@ export default function MapCanvas({
       // Keep the preset selected so the user can drop several in a row.
       return;
     }
-  }, [tool, activePreset, getStagePos, addPolygonPoint, addNode, addPresetStore, setSelected, pushSnapshot]);
+  }, [tool, activePreset, getStagePos, addPolygonPoint, addNode, addPresetStore, setSelected, pushSnapshot, snap]);
 
   const handleStageDblClick = useCallback(() => {
     if (tool === "polygon" && activePolygon.length >= 3) {
@@ -246,6 +253,37 @@ export default function MapCanvas({
         return;
       }
 
+      // Ctrl/Cmd+C — copy selected rooms to a cross-floor clipboard
+      if (mod && (e.key === "c" || e.key === "C")) {
+        if (selectedIds.length > 0) {
+          e.preventDefault();
+          copyToClipboard(stores.filter((s) => selectedIds.includes(s.id)));
+        }
+        return;
+      }
+
+      // Ctrl/Cmd+V — paste clipboard onto THIS floor (new ids, 20u offset)
+      if (mod && (e.key === "v" || e.key === "V")) {
+        const items = pasteFromClipboard();
+        if (items.length === 0) return;
+        e.preventDefault();
+        pushSnapshot();
+        const newIds: string[] = [];
+        for (const item of items) {
+          const newId = nanoid();
+          addPresetStore({
+            ...item,
+            id: newId,
+            name: `${item.name} (copy)`,
+            polygon: item.polygon.map((p) => ({ x: p.x + 20, y: p.y + 20 })),
+            navNodeId: undefined,
+          });
+          newIds.push(newId);
+        }
+        if (newIds.length > 0) selectAllStores(newIds);
+        return;
+      }
+
       // Ctrl/Cmd+D — duplicate selection (rooms or single node)
       if (mod && (e.key === "d" || e.key === "D")) {
         e.preventDefault();
@@ -334,6 +372,22 @@ export default function MapCanvas({
     pushSnapshot, undo, redo,
   ]);
 
+  // ── Grid-snap toggle button (top-right overlay) ────────────────────────
+  const gridSnapToggle = (
+    <div className="absolute top-2 right-2 z-10 flex items-center gap-1.5 bg-white border border-slate-200 rounded-full shadow-sm px-2.5 py-1">
+      <input
+        id="grid-snap"
+        type="checkbox"
+        checked={gridSnap}
+        onChange={(e) => setGridSnap(e.target.checked)}
+        className="w-3.5 h-3.5 rounded text-blue-500 focus:ring-blue-500"
+      />
+      <label htmlFor="grid-snap" className="text-xs font-medium text-slate-600 cursor-pointer select-none">
+        Snap to grid (10u)
+      </label>
+    </div>
+  );
+
   const nodeById = (id: string) => nodes.find((n) => n.id === id);
 
   // ── Transformer (Word-style 8-handle resize box) ────────────────────────
@@ -378,23 +432,26 @@ export default function MapCanvas({
   const handleVertexDrag = useCallback((storeId: string, vertexIdx: number, e: any) => {
     const store = stores.find((s) => s.id === storeId);
     if (!store) return;
-    const nx = e.target.x();
-    const ny = e.target.y();
+    const nx = snap(e.target.x());
+    const ny = snap(e.target.y());
     const next = store.polygon.map((p, i) => (i === vertexIdx ? { x: nx, y: ny } : p));
     updateStore(storeId, { polygon: next });
-  }, [stores, updateStore]);
+  }, [stores, updateStore, snap]);
 
   // ── Whole-shape drag: translate every vertex by the Line's offset ─────────
   const handleShapeDragEnd = useCallback((storeId: string, e: any) => {
     const store = stores.find((s) => s.id === storeId);
     if (!store) return;
-    const dx = e.target.x();
-    const dy = e.target.y();
-    if (dx === 0 && dy === 0) return;
+    const dx = snap(e.target.x());
+    const dy = snap(e.target.y());
+    if (dx === 0 && dy === 0) {
+      e.target.position({ x: 0, y: 0 });
+      return;
+    }
     const next = store.polygon.map((p) => ({ x: p.x + dx, y: p.y + dy }));
     e.target.position({ x: 0, y: 0 }); // reset the Line node back to origin
     updateStore(storeId, { polygon: next });
-  }, [stores, updateStore]);
+  }, [stores, updateStore, snap]);
 
   // Cursor handling for hover affordances (move on shape, resize on vertex)
   const setCursor = (cur: string) => {
@@ -423,6 +480,7 @@ export default function MapCanvas({
       style={{ cursor: tool === "pan" ? "grab" : "crosshair" }}
       onContextMenu={(e) => { e.preventDefault(); }}
     >
+      {gridSnapToggle}
       {/* Status banners */}
       {tool === "edge" && edgeStart && (
         <div className="absolute top-2 left-1/2 -translate-x-1/2 bg-amber-500 text-white text-xs px-3 py-1 rounded-full z-10 shadow">
