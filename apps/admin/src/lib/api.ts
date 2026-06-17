@@ -4,6 +4,24 @@
 // change. In dev set NEXT_PUBLIC_API_URL=http://localhost:4000/api in `.env`.
 const API = process.env.NEXT_PUBLIC_API_URL || "/api";
 
+/**
+ * The admin is mounted under a baked-in basePath (e.g. /console-7k29qz) so any
+ * raw browser navigation must prefix it — without this, `window.location.href =
+ * "/login"` lands on the visitor app and 404s. Next.js's `<Link>` /
+ * `useRouter()` handle this automatically; this helper is for the rare
+ * outside-Next case (the 401 redirect from a fetch helper).
+ *
+ * Known top-level admin routes; if the current first segment isn't one of
+ * these, treat it as the basePath.
+ */
+const ADMIN_TOP_LEVEL = new Set(["buildings", "login"]);
+function getAdminBasePath(): string {
+  if (typeof window === "undefined") return "";
+  const first = window.location.pathname.split("/").filter(Boolean)[0];
+  if (!first || ADMIN_TOP_LEVEL.has(first)) return "";
+  return `/${first}`;
+}
+
 async function req<T>(path: string, init?: RequestInit): Promise<T> {
   const token = typeof window !== "undefined" ? window.localStorage.getItem("wain.admin.token") : null;
   const res = await fetch(`${API}${path}`, {
@@ -14,16 +32,24 @@ async function req<T>(path: string, init?: RequestInit): Promise<T> {
     ...init,
   });
   if (res.status === 401 && typeof window !== "undefined") {
-    // Session missing/expired → bounce to login.
+    // Session missing/expired → bounce to login (basePath-aware so the admin
+    // mounted under a secret URL doesn't 404 on the visitor app).
     window.localStorage.removeItem("wain.admin.token");
-    if (!window.location.pathname.startsWith("/login")) window.location.href = "/login";
+    const loginUrl = `${getAdminBasePath()}/login`;
+    if (window.location.pathname !== loginUrl) window.location.href = loginUrl;
     throw new Error("Session expired — please log in again.");
   }
   if (!res.ok) {
     const err = await res.json().catch(() => ({ message: res.statusText }));
     throw new Error(err.message ?? "API error");
   }
-  return res.json();
+  // Some endpoints (e.g. DELETE) legitimately return an empty body. Don't
+  // throw "Unexpected end of JSON input" — return undefined and let the
+  // caller decide whether it cares.
+  const text = await res.text();
+  if (!text) return undefined as unknown as T;
+  try { return JSON.parse(text) as T; }
+  catch { return text as unknown as T; }
 }
 
 export const api = {
