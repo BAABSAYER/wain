@@ -73,6 +73,7 @@ export default function MapCanvas({
     bringStoreToFront, sendStoreToBack,
     pushSnapshot, undo, redo,
     gridSnap, setGridSnap,
+    linkModeStoreId, exitLinkMode, toggleStoreNavLink,
   } = useMapBuilderStore();
 
   // Snap a single value (or 2D point) to the nearest grid step. No-op when
@@ -155,6 +156,14 @@ export default function MapCanvas({
 
   const handleNodeClick = useCallback((nodeId: string, e: any) => {
     e.cancelBubble = true;
+    // Link mode wins over every other tool: clicking a node toggles its
+    // membership in the active store's link list. Stays in link mode until
+    // the user presses Esc or hits the toolbar button again.
+    if (linkModeStoreId) {
+      pushSnapshot();
+      toggleStoreNavLink(linkModeStoreId, nodeId);
+      return;
+    }
     if (tool === "edge") {
       if (!edgeStart) setEdgeStart(nodeId);
       else if (edgeStart !== nodeId) {
@@ -166,7 +175,7 @@ export default function MapCanvas({
     }
     if (tool === "qr") { onCreateQR?.(nodeId); return; }
     if (tool === "select") setSelected(nodeId, "node");
-  }, [tool, edgeStart, addEdge, setSelected, onCreateQR, pushSnapshot]);
+  }, [tool, edgeStart, addEdge, setSelected, onCreateQR, pushSnapshot, linkModeStoreId, toggleStoreNavLink]);
 
   const handleEdgeClick = useCallback((edgeId: string, e: any) => {
     e.cancelBubble = true;
@@ -225,6 +234,7 @@ export default function MapCanvas({
         setActivePreset(null);
         setSelected(null);
         setCtxMenu(null);
+        exitLinkMode();
         return;
       }
 
@@ -507,6 +517,18 @@ export default function MapCanvas({
           Click a nav node to create a QR scan point
         </div>
       )}
+      {linkModeStoreId && (
+        <div className="absolute top-2 left-1/2 -translate-x-1/2 z-10 flex items-center gap-2 bg-emerald-500 text-white text-xs px-3 py-1 rounded-full shadow">
+          <span className="w-2 h-2 rounded-full bg-white animate-pulse" />
+          Link mode — click nav nodes to add/remove. Esc when done.
+          <button
+            onClick={exitLinkMode}
+            className="ml-1 px-2 py-0.5 bg-white/20 hover:bg-white/30 rounded text-[10px] font-semibold"
+          >
+            Done
+          </button>
+        </div>
+      )}
 
       <Stage
         ref={stageRef}
@@ -646,42 +668,91 @@ export default function MapCanvas({
             );
           })()}
 
-          {nodes.map((node) => {
-            const isSel = selectedKind === "node" && selectedId === node.id;
-            const isEdgeStart = edgeStart === node.id;
-            const baseColor = NODE_COLORS[node.type] ?? "#3b82f6";
-            return (
-              <Group key={node.id}>
-                <Circle
-                  x={node.x} y={node.y}
-                  radius={isEdgeStart ? 11 : 8}
-                  fill="#ffffff"
-                  stroke={baseColor}
-                  strokeWidth={3}
-                  onClick={(e: any) => handleNodeClick(node.id, e)}
-                  onTap={(e: any) => handleNodeClick(node.id, e)}
-                  shadowBlur={isEdgeStart || isSel ? 10 : 0}
-                  shadowColor={baseColor}
-                />
-                <Circle
-                  x={node.x} y={node.y}
-                  radius={4}
-                  fill={baseColor}
-                  listening={false}
-                />
-                {isSel && (
-                  <Circle
-                    x={node.x} y={node.y}
-                    radius={14}
-                    stroke="#2563eb"
-                    strokeWidth={2}
-                    dash={[3, 3]}
-                    listening={false}
-                  />
-                )}
-              </Group>
+          {(() => {
+            // In link mode, compute which nodes are currently linked to the
+            // active store so each one can get a green-ring outline. Also
+            // grab the store's polygon centroid for the dashed connector
+            // lines drawn below.
+            const activeStore = linkModeStoreId ? stores.find((s) => s.id === linkModeStoreId) : null;
+            const linkedSet = new Set<string>(
+              activeStore
+                ? (activeStore.navLinkNodeIds && activeStore.navLinkNodeIds.length > 0
+                    ? activeStore.navLinkNodeIds
+                    : (activeStore.navNodeId ? [activeStore.navNodeId] : []))
+                : [],
             );
-          })}
+            const centroid = activeStore && activeStore.polygon.length > 0
+              ? {
+                  x: activeStore.polygon.reduce((a, p) => a + p.x, 0) / activeStore.polygon.length,
+                  y: activeStore.polygon.reduce((a, p) => a + p.y, 0) / activeStore.polygon.length,
+                }
+              : null;
+            return (
+              <>
+                {/* Dashed connector lines (link mode only) */}
+                {centroid && [...linkedSet].map((nodeId) => {
+                  const n = nodes.find((nn) => nn.id === nodeId);
+                  if (!n) return null;
+                  return (
+                    <Line
+                      key={`link-${nodeId}`}
+                      points={[centroid.x, centroid.y, n.x, n.y]}
+                      stroke="#10b981"
+                      strokeWidth={2}
+                      dash={[8, 4]}
+                      listening={false}
+                    />
+                  );
+                })}
+                {nodes.map((node) => {
+                  const isSel = selectedKind === "node" && selectedId === node.id;
+                  const isEdgeStart = edgeStart === node.id;
+                  const isLinked = linkedSet.has(node.id);
+                  const baseColor = NODE_COLORS[node.type] ?? "#3b82f6";
+                  return (
+                    <Group key={node.id}>
+                      <Circle
+                        x={node.x} y={node.y}
+                        radius={isEdgeStart || (linkModeStoreId && !isLinked) ? 11 : 8}
+                        fill="#ffffff"
+                        stroke={baseColor}
+                        strokeWidth={3}
+                        onClick={(e: any) => handleNodeClick(node.id, e)}
+                        onTap={(e: any) => handleNodeClick(node.id, e)}
+                        shadowBlur={isEdgeStart || isSel || (linkModeStoreId ? 12 : 0)}
+                        shadowColor={isLinked ? "#10b981" : baseColor}
+                      />
+                      <Circle
+                        x={node.x} y={node.y}
+                        radius={4}
+                        fill={baseColor}
+                        listening={false}
+                      />
+                      {isSel && (
+                        <Circle
+                          x={node.x} y={node.y}
+                          radius={14}
+                          stroke="#2563eb"
+                          strokeWidth={2}
+                          dash={[3, 3]}
+                          listening={false}
+                        />
+                      )}
+                      {isLinked && (
+                        <Circle
+                          x={node.x} y={node.y}
+                          radius={14}
+                          stroke="#10b981"
+                          strokeWidth={2.5}
+                          listening={false}
+                        />
+                      )}
+                    </Group>
+                  );
+                })}
+              </>
+            );
+          })()}
         </Layer>
 
         {/* Vertex handles layer (top-most so they're always grabbable) */}

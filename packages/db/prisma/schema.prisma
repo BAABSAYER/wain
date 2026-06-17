@@ -64,8 +64,14 @@ model Store {
   updatedAt     DateTime @updatedAt
 
   floor       Floor     @relation(fields: [floorId], references: [id], onDelete: Cascade)
-  navNode     NavNode?  @relation(fields: [navNodeId], references: [id])
+  // navNode / navNodeId are the LEGACY single-link kept for backward
+  // compatibility. The source of truth for routing is navLinks (M:N).
+  navNode     NavNode?  @relation("StorePrimaryNode", fields: [navNodeId], references: [id])
   navNodeId   String?
+  // M:N — a store can be reachable from multiple entrances (e.g. a
+  // department with two doors), and a single nav node can serve multiple
+  // stores (e.g. an entrance shared by two adjoining rooms).
+  navLinks    StoreNavLink[]
 }
 
 // ─── Navigation Graph ─────────────────────────────────────────────────────────
@@ -80,10 +86,27 @@ model NavNode {
   connectedFloorNodeId String?
 
   floor        Floor      @relation(fields: [floorId], references: [id], onDelete: Cascade)
-  stores       Store[]
+  stores       Store[]    @relation("StorePrimaryNode")
+  storeLinks   StoreNavLink[]
   qrPoints     QRPoint[]
   edgesFrom    NavEdge[]  @relation("EdgeFrom")
   edgesTo      NavEdge[]  @relation("EdgeTo")
+}
+
+// Join table for the M:N Store ↔ NavNode relationship. A store opens "for
+// routing" the moment at least one row exists here (or via the legacy
+// Store.navNodeId for backward compat). Cascade on both sides so deleting a
+// store or a nav node cleans up its links automatically.
+model StoreNavLink {
+  storeId   String
+  navNodeId String
+  createdAt DateTime @default(now())
+
+  store    Store   @relation(fields: [storeId],   references: [id], onDelete: Cascade)
+  navNode  NavNode @relation(fields: [navNodeId], references: [id], onDelete: Cascade)
+
+  @@id([storeId, navNodeId])
+  @@index([navNodeId])
 }
 
 model NavEdge {

@@ -22,6 +22,7 @@ export default function PropertiesPanel() {
   const {
     selectedId, selectedKind, extraSelectedIds, stores, nodes, edges,
     updateStore, removeStore, updateNode, removeNode, removeEdge,
+    enterLinkMode, toggleStoreNavLink, setStoreNavLinks, linkModeStoreId,
   } = useMapBuilderStore();
 
   // 2+ rooms selected → switch the panel to bulk-group mode.
@@ -154,11 +155,18 @@ export default function PropertiesPanel() {
           </label>
         </div>
 
-        {/* Routing: must be linked to a nav node to be reachable via Directions */}
+        {/* Routing: must be linked to at least one nav node to be reachable via Directions */}
         <div className="border-t border-slate-100 pt-3 mt-1">
           <p className="text-[11px] uppercase tracking-wider text-slate-400 font-semibold mb-2">Routing</p>
           {(() => {
-            const linked = store.navNodeId && nodes.some((n) => n.id === store.navNodeId);
+            const linkedIds: string[] = store.navLinkNodeIds && store.navLinkNodeIds.length > 0
+              ? store.navLinkNodeIds
+              : (store.navNodeId ? [store.navNodeId] : []);
+            const linkedNodes = linkedIds
+              .map((id) => nodes.find((n) => n.id === id))
+              .filter((n): n is NonNullable<typeof n> => !!n);
+            const isLinking = linkModeStoreId === store.id;
+
             const linkNearest = () => {
               if (!store.polygon.length || nodes.length === 0) return;
               const cx = store.polygon.reduce((a, p) => a + p.x, 0) / store.polygon.length;
@@ -168,60 +176,76 @@ export default function PropertiesPanel() {
                 const d = (n.x - cx) ** 2 + (n.y - cy) ** 2;
                 if (d < bestD) { bestD = d; best = n; }
               }
-              if (best) updateStore(store.id, { navNodeId: best.id });
+              if (best) toggleStoreNavLink(store.id, best.id);
             };
+
             return (
               <>
-                {linked ? (
+                {linkedNodes.length > 0 ? (
                   <div className="text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 rounded px-2.5 py-1.5">
-                    ✓ Linked to a nav node — reachable via Directions.
+                    ✓ Linked to {linkedNodes.length} nav node{linkedNodes.length === 1 ? "" : "s"} — routes pick the closest entrance.
                   </div>
                 ) : (
                   <div className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded px-2.5 py-1.5">
                     ⚠ Not linked to a nav node — visitors can&apos;t route here.
                     {nodes.length === 0 && (
                       <span className="block mt-1 text-amber-700">
-                        Place nodes with the Node tool, then pick one below.
+                        Place nodes with the Node tool first, then come back here.
                       </span>
                     )}
                   </div>
                 )}
 
-                <label className="flex flex-col gap-1 mt-2">
-                  <span className="text-xs text-slate-500 font-medium">Linked nav node</span>
-                  <select
-                    value={store.navNodeId ?? ""}
-                    onChange={(e) => updateStore(store.id, { navNodeId: e.target.value || undefined })}
-                    disabled={nodes.length === 0}
-                    className="bg-white border border-slate-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 disabled:bg-slate-50 disabled:text-slate-400 rounded px-3 py-1.5 text-sm text-slate-900 outline-none"
-                  >
-                    <option value="">— Not linked —</option>
-                    {nodes.map((n) => (
-                      <option key={n.id} value={n.id}>
-                        {n.type} — ({Math.round(n.x)}, {Math.round(n.y)})
-                      </option>
+                {linkedNodes.length > 0 && (
+                  <ul className="mt-2 flex flex-col gap-1">
+                    {linkedNodes.map((n) => (
+                      <li key={n.id} className="flex items-center justify-between gap-2 bg-white border border-slate-200 rounded px-2 py-1 text-xs">
+                        <span className="flex items-center gap-1.5 min-w-0">
+                          <span className="w-2 h-2 rounded-full bg-emerald-500 flex-shrink-0" />
+                          <span className="text-slate-700 truncate">
+                            {n.type} <span className="text-slate-400">({Math.round(n.x)}, {Math.round(n.y)})</span>
+                          </span>
+                        </span>
+                        <button
+                          onClick={() => toggleStoreNavLink(store.id, n.id)}
+                          className="w-5 h-5 rounded text-slate-400 hover:text-red-600 hover:bg-red-50 flex items-center justify-center text-sm leading-none flex-shrink-0"
+                          title="Unlink this node"
+                          aria-label="Unlink this node"
+                        >
+                          ×
+                        </button>
+                      </li>
                     ))}
-                  </select>
-                </label>
+                  </ul>
+                )}
 
                 <div className="grid grid-cols-2 gap-2 mt-2">
+                  <button
+                    onClick={() => enterLinkMode(store.id)}
+                    disabled={nodes.length === 0 || isLinking}
+                    className="px-3 py-1.5 bg-blue-500 hover:bg-blue-600 disabled:opacity-40 disabled:bg-blue-200 disabled:cursor-not-allowed text-white rounded text-sm font-medium shadow-sm"
+                  >
+                    {isLinking ? "Link mode active…" : (linkedNodes.length > 0 ? "Add / remove" : "+ Link nodes")}
+                  </button>
                   <button
                     onClick={linkNearest}
                     disabled={nodes.length === 0}
                     className="px-3 py-1.5 bg-blue-50 hover:bg-blue-100 disabled:opacity-40 border border-blue-200 rounded text-sm text-blue-700 font-medium"
+                    title="Link the closest unlinked node"
                   >
-                    Link nearest
-                  </button>
-                  <button
-                    onClick={() => updateStore(store.id, { navNodeId: undefined })}
-                    disabled={!store.navNodeId}
-                    className="px-3 py-1.5 bg-slate-50 hover:bg-slate-100 disabled:opacity-40 border border-slate-200 rounded text-sm text-slate-700 font-medium"
-                  >
-                    Unlink
+                    Add nearest
                   </button>
                 </div>
+                {linkedNodes.length > 0 && (
+                  <button
+                    onClick={() => setStoreNavLinks(store.id, [])}
+                    className="mt-2 w-full px-3 py-1.5 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded text-xs text-slate-600 font-medium"
+                  >
+                    Unlink all
+                  </button>
+                )}
                 <p className="text-[10px] text-slate-400 mt-1.5 leading-relaxed">
-                  Tip: changes are local until you click Save. After saving, every nav node gets a new id from the server — the link is rebuilt automatically.
+                  In link mode, click nav nodes on the canvas to add or remove them. Esc to exit. Saving persists the change.
                 </p>
               </>
             );

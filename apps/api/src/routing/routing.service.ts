@@ -26,10 +26,26 @@ export class RoutingService {
 
     const store = await this.prisma.store.findUnique({
       where: { id: toStoreId },
-      include: { floor: true, navNode: true },
+      include: {
+        floor: true,
+        navNode: true,
+        // M:N linked nodes — a store with two entrances routes to whichever
+        // is shortest from this origin.
+        navLinks: { include: { navNode: true } },
+      },
     });
     if (!store) throw new NotFoundException(`Store ${toStoreId} not found`);
-    if (!store.navNodeId) throw new BadRequestException(`Store "${store.name}" has no nav node assigned`);
+
+    // Build the candidate-target list: every M:N linked node + the legacy
+    // primary navNodeId (deduped). If none, the store isn't routable.
+    const targetIds = [
+      ...store.navLinks.map((l) => l.navNodeId),
+      ...(store.navNodeId ? [store.navNodeId] : []),
+    ];
+    const uniqueTargets = [...new Set(targetIds)];
+    if (uniqueTargets.length === 0) {
+      throw new BadRequestException(`Store "${store.name}" has no nav node linked`);
+    }
 
     const fromNode = await this.prisma.navNode.findUnique({ where: { id: fromNodeId } });
     if (!fromNode) throw new NotFoundException(`Start node ${fromNodeId} not found`);
@@ -37,19 +53,27 @@ export class RoutingService {
     const buildingId = store.floor.buildingId;
     const graph = await this.getGraph(buildingId);
 
-    const result = aStar(graph, fromNodeId, store.navNodeId, accessibleOnly);
-
-    if (!result.found) {
+    // Try A* to each candidate target; keep the shortest found route. This
+    // gives "any door" routing — visitors automatically arrive at whichever
+    // entrance is closest to where they scanned.
+    let best: { path: string[]; totalDistance: number } | null = null;
+    for (const targetId of uniqueTargets) {
+      const r = aStar(graph, fromNodeId, targetId, accessibleOnly);
+      if (r.found && (!best || r.totalDistance < best.totalDistance)) {
+        best = { path: r.path, totalDistance: r.totalDistance };
+      }
+    }
+    if (!best) {
       throw new BadRequestException("No route found between the two points");
     }
 
-    const steps = reconstructRoute(result.path, graph);
+    const steps = reconstructRoute(best.path, graph);
     const uniqueFloors = [...new Set(steps.map((s) => s.floorId))];
 
     const route = {
       steps,
-      totalDistance: result.totalDistance,
-      estimatedMinutes: estimateWalkingMinutes(result.totalDistance),
+      totalDistance: best.totalDistance,
+      estimatedMinutes: estimateWalkingMinutes(best.totalDistance),
       floors: uniqueFloors,
       destination: {
         id: store.id,

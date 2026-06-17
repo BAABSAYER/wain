@@ -156,6 +156,10 @@ export interface CanvasStore {
   zoneAr?: string;
   logoUrl?: string;
   navNodeId?: string | null;
+  /** M:N — the set of nav nodes this store is linked to. Source of truth
+   *  in the admin; the legacy navNodeId field stays in sync as the first
+   *  entry for backward compatibility. */
+  navLinkNodeIds?: string[];
 }
 
 export interface CanvasNode {

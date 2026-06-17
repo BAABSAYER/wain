@@ -59,6 +59,10 @@ export default function FloorEditorPage() {
       category: s.category, color: s.color, extrudeHeight: s.extrudeHeight,
       zone: s.zone ?? "", zoneAr: s.zoneAr ?? "", logoUrl: s.logoUrl ?? "",
       navNodeId: s.navNodeId ?? null,
+      // M:N: prefer the navLinks array, fall back to legacy navNodeId
+      navLinkNodeIds: Array.isArray(s.navLinks) && s.navLinks.length > 0
+        ? s.navLinks.map((l: any) => l.navNodeId)
+        : (s.navNodeId ? [s.navNodeId] : []),
     }));
     const canvasNodes = (f.navNodes ?? []).map((n: any) => ({
       id: n.id, x: n.x, y: n.y, type: n.type,
@@ -99,22 +103,31 @@ export default function FloorEditorPage() {
         catch (e) { console.warn(`deleteStore ${id} failed (continuing):`, e); }
       }
 
-      // 3. Save each store, mapping its in-memory navNodeId through the new
-      //    id map so the link survives the rebuild.
+      // 3. Save each store. Remap legacy navNodeId AND the M:N navLinkNodeIds
+      //    through the id map so links survive a node-rebuild.
+      const mapId = (id: string | null | undefined) =>
+        id ? (nodeIdMap[id] ?? id) : null;        // identity fall-through for stable ids
       for (const store of stores) {
-        const mappedNavNodeId = store.navNodeId
-          ? (nodeIdMap[store.navNodeId] ?? null)   // unknown id → unlink rather than dangle
-          : null;
+        const mappedNavNodeId = mapId(store.navNodeId);
         const exists = floor?.stores?.find((s: any) => s.id === store.id);
-        if (exists) {
-          await api.updateStore(store.id, {
-            name: store.name, nameAr: store.nameAr, category: store.category,
-            color: store.color, extrudeHeight: store.extrudeHeight, polygon: store.polygon,
-            zone: store.zone || null, zoneAr: store.zoneAr || null, logoUrl: store.logoUrl || null,
-            navNodeId: mappedNavNodeId,
-          });
-        } else {
-          await api.createStore({ ...store, floorId, isSearchable: true, navNodeId: mappedNavNodeId });
+        const savedStore = exists
+          ? await api.updateStore(store.id, {
+              name: store.name, nameAr: store.nameAr, category: store.category,
+              color: store.color, extrudeHeight: store.extrudeHeight, polygon: store.polygon,
+              zone: store.zone || null, zoneAr: store.zoneAr || null, logoUrl: store.logoUrl || null,
+              navNodeId: mappedNavNodeId,
+            })
+          : await api.createStore({ ...store, floorId, isSearchable: true, navNodeId: mappedNavNodeId });
+
+        // M:N nav links — replace the full set per save. Skip the PUT if
+        // there's nothing to set AND nothing was previously set (don't
+        // burn a call on no-op stores).
+        const mappedLinks = (store.navLinkNodeIds ?? [])
+          .map((id) => mapId(id))
+          .filter((id): id is string => !!id);
+        const hadOld = Array.isArray((exists as any)?.navLinks) && (exists as any).navLinks.length > 0;
+        if (mappedLinks.length > 0 || hadOld) {
+          await api.setStoreNavLinks(savedStore.id ?? store.id, mappedLinks);
         }
       }
       markClean();

@@ -71,6 +71,9 @@ export const api = {
   getStores:   (floorId: string)          => req<any[]>(`/stores/floor/${floorId}`),
   createStore: (data: any)                => req<any>("/stores", { method: "POST", body: JSON.stringify(data) }),
   updateStore: (id: string, data: any)    => req<any>(`/stores/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
+  /** Replace the full set of nav nodes a store is linked to (M:N). */
+  setStoreNavLinks: (id: string, navNodeIds: string[]) =>
+                                              req<any>(`/stores/${id}/nav-links`, { method: "PUT", body: JSON.stringify({ navNodeIds }) }),
   deleteStore: (id: string)               => req<any>(`/stores/${id}`, { method: "DELETE" }),
   searchStores: (buildingId: string, q: string) => req<any[]>(`/stores/search?buildingId=${buildingId}&q=${encodeURIComponent(q)}`),
 

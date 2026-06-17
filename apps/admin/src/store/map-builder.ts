@@ -28,6 +28,15 @@ interface MapBuilderState {
   /** Snap drags / preset drops to the nearest 10-unit grid when true. */
   gridSnap: boolean;
   setGridSnap: (on: boolean) => void;
+  /** When set, the canvas is in "click a nav node to add/remove from this
+   *  store's link list" mode. Other interactions are suppressed. */
+  linkModeStoreId: string | null;
+  enterLinkMode: (storeId: string) => void;
+  exitLinkMode: () => void;
+  /** Toggle membership of nodeId in the given store's navLinkNodeIds list. */
+  toggleStoreNavLink: (storeId: string, nodeId: string) => void;
+  /** Set the full list (used when the picker deletes / clears all links). */
+  setStoreNavLinks: (storeId: string, nodeIds: string[]) => void;
   isDirty: boolean;
 
   setTool: (tool: DrawTool) => void;
@@ -84,6 +93,7 @@ export const useMapBuilderStore = create<MapBuilderState>((set) => ({
   activePolygon: [],
   activePreset: null,
   gridSnap: false,
+  linkModeStoreId: null,
   isDirty: false,
   past: [],
   future: [],
@@ -95,6 +105,7 @@ export const useMapBuilderStore = create<MapBuilderState>((set) => ({
     selectedId: null,
     selectedKind: null,
     extraSelectedIds: [],
+    linkModeStoreId: null,
   }),
   setSelected: (id, kind = null) =>
     set({ selectedId: id, selectedKind: id ? kind : null, extraSelectedIds: [] }),
@@ -142,6 +153,29 @@ export const useMapBuilderStore = create<MapBuilderState>((set) => ({
 
   setActivePreset: (id) => set({ activePreset: id }),
   setGridSnap: (on) => set({ gridSnap: on }),
+
+  enterLinkMode: (storeId) => set({ linkModeStoreId: storeId }),
+  exitLinkMode: () => set({ linkModeStoreId: null }),
+  toggleStoreNavLink: (storeId, nodeId) =>
+    set((s) => ({
+      stores: s.stores.map((st) => {
+        if (st.id !== storeId) return st;
+        const current = st.navLinkNodeIds ?? (st.navNodeId ? [st.navNodeId] : []);
+        const has = current.includes(nodeId);
+        const next = has ? current.filter((id) => id !== nodeId) : [...current, nodeId];
+        return { ...st, navLinkNodeIds: next, navNodeId: next[0] ?? null };
+      }),
+      isDirty: true,
+    })),
+  setStoreNavLinks: (storeId, nodeIds) =>
+    set((s) => ({
+      stores: s.stores.map((st) =>
+        st.id === storeId
+          ? { ...st, navLinkNodeIds: nodeIds, navNodeId: nodeIds[0] ?? null }
+          : st,
+      ),
+      isDirty: true,
+    })),
 
   addPresetStore: (store) =>
     set((s) => ({
@@ -270,7 +304,7 @@ export const useMapBuilderStore = create<MapBuilderState>((set) => ({
     set({
       stores, nodes, edges, isDirty: false,
       selectedId: null, selectedKind: null, extraSelectedIds: [],
-      activePreset: null, past: [], future: [],
+      activePreset: null, linkModeStoreId: null, past: [], future: [],
     }),
 
   markClean: () => set({ isDirty: false }),

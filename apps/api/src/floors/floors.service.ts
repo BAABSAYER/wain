@@ -17,7 +17,10 @@ export class FloorsService {
   async findOne(id: string) {
     const floor = await this.prisma.floor.findUnique({
       where: { id },
-      include: { stores: true, navNodes: { include: { edgesFrom: true } } },
+      include: {
+        stores: { include: { navLinks: { select: { navNodeId: true } } } },
+        navNodes: { include: { edgesFrom: true } },
+      },
     });
     if (!floor) throw new NotFoundException(`Floor ${id} not found`);
     return floor;
