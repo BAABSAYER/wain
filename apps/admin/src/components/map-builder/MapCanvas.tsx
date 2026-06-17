@@ -10,6 +10,7 @@ import {
   Text as TextRaw,
   Image as KonvaImageRaw,
   Rect as RectRaw,
+  Transformer as TransformerRaw,
 } from "react-konva";
 
 // react-konva@19's component types aren't valid JSX element types under React 19's
@@ -23,6 +24,7 @@ const Group = GroupRaw as unknown as ComponentType<any>;
 const Text = TextRaw as unknown as ComponentType<any>;
 const KonvaImage = KonvaImageRaw as unknown as ComponentType<any>;
 const Rect = RectRaw as unknown as ComponentType<any>;
+const Transformer = TransformerRaw as unknown as ComponentType<any>;
 import useImage from "use-image";
 import { useMapBuilderStore } from "@/store/map-builder";
 import { findPreset } from "./shape-presets";
@@ -51,6 +53,11 @@ export default function MapCanvas({
 }: Props) {
   const [bgImage] = useImage(floorPlanUrl ?? "");
   const stageRef = useRef<any>(null);
+  // Word-style resize handles (the 8-handle box) attach to the selected room's
+  // Line via a Konva Transformer. We keep a ref per store so the Transformer
+  // can re-attach when the selection changes without rebuilding the layer.
+  const lineRefs = useRef<Record<string, any>>({});
+  const transformerRef = useRef<any>(null);
   const [edgeStart, setEdgeStart] = useState<string | null>(null);
   const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
 
@@ -194,6 +201,44 @@ export default function MapCanvas({
 
   const nodeById = (id: string) => nodes.find((n) => n.id === id);
 
+  // ── Transformer (Word-style 8-handle resize box) ────────────────────────
+  // Attach the Transformer to the currently-primary-selected room's Line so
+  // the user can scale it: corners scale both axes, mid-edge handles scale
+  // a single axis. Hide when nothing is selected or when multi-selecting
+  // (bulk-edit mode is for properties, not shape transforms).
+  useEffect(() => {
+    const tr = transformerRef.current;
+    if (!tr) return;
+    const isSingleStoreSelection =
+      selectedKind === "store" && !!selectedId && extraSelectedIds.length === 0;
+    const ln = isSingleStoreSelection ? lineRefs.current[selectedId!] : null;
+    tr.nodes(ln ? [ln] : []);
+    tr.getLayer()?.batchDraw();
+  }, [selectedId, selectedKind, extraSelectedIds, stores]);
+
+  // Convert the Line's transient scale/translation back into polygon points.
+  // We let Konva animate scaleX/scaleY/x/y during the drag (live preview),
+  // then on drag end bake the result into store.polygon and reset the node
+  // so the next transform starts from identity.
+  const handleStoreTransformEnd = useCallback((storeId: string, e: any) => {
+    const node = e.target;
+    const scaleX = node.scaleX();
+    const scaleY = node.scaleY();
+    const dx = node.x();
+    const dy = node.y();
+    node.scaleX(1);
+    node.scaleY(1);
+    node.x(0);
+    node.y(0);
+    const store = stores.find((s) => s.id === storeId);
+    if (!store) return;
+    const next = store.polygon.map((p) => ({
+      x: dx + p.x * scaleX,
+      y: dy + p.y * scaleY,
+    }));
+    updateStore(storeId, { polygon: next });
+  }, [stores, updateStore]);
+
   // ── Vertex drag handlers ────────────────────────────────────────────────
   const handleVertexDrag = useCallback((storeId: string, vertexIdx: number, e: any) => {
     const store = stores.find((s) => s.id === storeId);
@@ -287,6 +332,10 @@ export default function MapCanvas({
             return (
               <Group key={store.id}>
                 <Line
+                  ref={(node: any) => {
+                    if (node) lineRefs.current[store.id] = node;
+                    else delete lineRefs.current[store.id];
+                  }}
                   points={store.polygon.flatMap((p) => [p.x, p.y])}
                   closed
                   fill={`${store.color}cc`}
@@ -296,6 +345,7 @@ export default function MapCanvas({
                   onTap={(e: any) => handleStoreClick(store.id, e)}
                   draggable={canDragShape}
                   onDragEnd={(e: any) => handleShapeDragEnd(store.id, e)}
+                  onTransformEnd={(e: any) => handleStoreTransformEnd(store.id, e)}
                   onMouseEnter={() => canDragShape && setCursor("move")}
                   onMouseLeave={() => canDragShape && setCursor("crosshair")}
                 />
@@ -437,6 +487,31 @@ export default function MapCanvas({
               />
             ));
           })()}
+          {/* Word-style 8-handle scale box. Attaches to the selected room's
+              Line via the effect above. Corners scale both axes, mid-edge
+              handles scale a single axis. Hidden during multi-select. */}
+          <Transformer
+            ref={transformerRef}
+            rotateEnabled={false}
+            keepRatio={false}
+            enabledAnchors={[
+              "top-left", "top-center", "top-right",
+              "middle-left", "middle-right",
+              "bottom-left", "bottom-center", "bottom-right",
+            ]}
+            boundBoxFunc={(_oldBox: any, newBox: any) => {
+              // Refuse degenerate sizes — keeps the polygon from collapsing
+              // through zero (which would also flip orientation).
+              if (newBox.width < 10 || newBox.height < 10) return _oldBox;
+              return newBox;
+            }}
+            anchorSize={10}
+            anchorStroke="#2563eb"
+            anchorFill="#ffffff"
+            anchorStrokeWidth={2}
+            borderStroke="#2563eb"
+            borderDash={[6, 4]}
+          />
         </Layer>
       </Stage>
     </div>
