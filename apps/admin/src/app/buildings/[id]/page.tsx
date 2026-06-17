@@ -47,6 +47,26 @@ export default function BuildingPage() {
     await refresh();
   };
 
+  const handleRenameFloor = async (f: any) => {
+    const name = window.prompt(`Floor name (EN):`, f.name);
+    if (name === null || name.trim() === "" || name === f.name) return;
+    await api.updateFloor(f.id, { name: name.trim() });
+    await refresh();
+  };
+
+  const handleDeleteFloor = async (f: any) => {
+    const stores = f.stores?.length ?? 0;
+    const nodes  = f.navNodes?.length ?? 0;
+    const msg = `Delete floor "${f.name}"?\n\n${stores} store(s) and ${nodes} nav node(s) on this floor will be removed permanently. This cannot be undone.`;
+    if (!window.confirm(msg)) return;
+    try {
+      await api.deleteFloor(f.id);
+      await refresh();
+    } catch (err: any) {
+      alert(`Delete failed: ${err?.message ?? "unknown error"}`);
+    }
+  };
+
   const handleCreateQR = async (e: React.FormEvent) => {
     e.preventDefault();
     setQrError(null);
@@ -145,22 +165,44 @@ export default function BuildingPage() {
 
         <div className="grid gap-3">
           {(building.floors ?? []).map((f: any) => (
-            <Link
+            <div
               key={f.id}
-              href={`/buildings/${id}/floors/${f.id}`}
-              className="bg-white border border-slate-200 hover:border-blue-300 hover:bg-blue-50/50 rounded-xl p-5 flex items-center justify-between transition-colors shadow-sm"
+              className="bg-white border border-slate-200 hover:border-blue-300 hover:bg-blue-50/50 rounded-xl flex items-center transition-colors shadow-sm"
             >
-              <div>
-                <div className="font-semibold text-slate-900">
-                  {f.name} <span className="text-slate-400 text-sm ml-2 font-normal">Level {f.level}</span>
+              <Link
+                href={`/buildings/${id}/floors/${f.id}`}
+                className="flex-1 p-5 flex items-center justify-between min-w-0"
+              >
+                <div className="min-w-0">
+                  <div className="font-semibold text-slate-900 truncate">
+                    {f.name} <span className="text-slate-400 text-sm ml-2 font-normal">Level {f.level}</span>
+                  </div>
+                  <div className="text-slate-500 text-sm truncate" dir="rtl">{f.nameAr}</div>
+                  <div className="text-slate-400 text-xs mt-1">
+                    {f.stores?.length ?? 0} stores · {f.navNodes?.length ?? 0} nav nodes · {f.width}×{f.height}
+                  </div>
                 </div>
-                <div className="text-slate-500 text-sm" dir="rtl">{f.nameAr}</div>
-                <div className="text-slate-400 text-xs mt-1">
-                  {f.stores?.length ?? 0} stores · {f.navNodes?.length ?? 0} nav nodes · {f.width}×{f.height}
-                </div>
+                <span className="text-blue-500 text-sm font-medium ml-3 flex-shrink-0">Open Map Builder →</span>
+              </Link>
+              <div className="flex items-center gap-1 pr-3 pl-1">
+                <button
+                  type="button"
+                  onClick={() => handleRenameFloor(f)}
+                  title="Rename floor"
+                  className="w-9 h-9 rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-700 flex items-center justify-center text-lg"
+                >
+                  ✎
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleDeleteFloor(f)}
+                  title="Delete floor"
+                  className="w-9 h-9 rounded-lg text-slate-400 hover:bg-red-50 hover:text-red-600 flex items-center justify-center text-lg"
+                >
+                  🗑
+                </button>
               </div>
-              <span className="text-blue-500 text-sm font-medium">Open Map Builder →</span>
-            </Link>
+            </div>
           ))}
           {building.floors?.length === 0 && (
             <div className="text-slate-400 text-center py-8 bg-white border border-dashed border-slate-200 rounded-xl">No floors yet.</div>

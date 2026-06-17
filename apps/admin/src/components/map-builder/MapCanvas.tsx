@@ -66,7 +66,9 @@ export default function MapCanvas({
     activePolygon, activePreset,
     addPolygonPoint, commitPolygon, clearActivePolygon,
     addNode, addEdge, addPresetStore, setActivePreset,
-    setSelected, setTool, updateStore, toggleExtraSelection,
+    setSelected, setTool, updateStore, updateNode,
+    removeStore, removeNode, removeEdge,
+    toggleExtraSelection, selectAllStores,
   } = useMapBuilderStore();
 
   // Center the floor in the viewport on initial mount
@@ -186,18 +188,113 @@ export default function MapCanvas({
     });
   }, []);
 
+  // ── Keyboard shortcuts (Word / Canva-style) ─────────────────────────────
+  // Esc clears, Ctrl/Cmd+D duplicates, Ctrl/Cmd+A selects every room on the
+  // floor, Delete/Backspace removes the selection, Arrows nudge (Shift = 10×).
+  // Skipped while typing in inputs so the PropertiesPanel forms work as usual.
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
+      const tgt = e.target as HTMLElement | null;
+      if (tgt && (tgt.tagName === "INPUT" || tgt.tagName === "TEXTAREA" || (tgt as HTMLElement).isContentEditable)) return;
+
+      // Esc — cancel any in-progress drawing and clear selection
       if (e.key === "Escape") {
         clearActivePolygon();
         setEdgeStart(null);
         setActivePreset(null);
         setSelected(null);
+        return;
+      }
+
+      const mod = e.ctrlKey || e.metaKey;
+      const selectedIds = (selectedKind === "store" && selectedId)
+        ? [selectedId, ...extraSelectedIds]
+        : [];
+
+      // Ctrl/Cmd+A — select every room on the floor
+      if (mod && (e.key === "a" || e.key === "A")) {
+        e.preventDefault();
+        selectAllStores(stores.map((s) => s.id));
+        return;
+      }
+
+      // Ctrl/Cmd+D — duplicate selection (rooms or single node)
+      if (mod && (e.key === "d" || e.key === "D")) {
+        e.preventDefault();
+        const OFFSET = 20;
+        if (selectedIds.length > 0) {
+          const newIds: string[] = [];
+          for (const id of selectedIds) {
+            const src = stores.find((s) => s.id === id);
+            if (!src) continue;
+            const newId = nanoid();
+            addPresetStore({
+              ...src,
+              id: newId,
+              name: `${src.name} (copy)`,
+              polygon: src.polygon.map((p) => ({ x: p.x + OFFSET, y: p.y + OFFSET })),
+              navNodeId: undefined,
+            });
+            newIds.push(newId);
+          }
+          if (newIds.length > 0) selectAllStores(newIds);
+        } else if (selectedKind === "node" && selectedId) {
+          const src = nodes.find((n) => n.id === selectedId);
+          if (src) {
+            const newId = nanoid();
+            addNode({ ...src, id: newId, x: src.x + OFFSET, y: src.y + OFFSET });
+            setSelected(newId, "node");
+          }
+        }
+        return;
+      }
+
+      // Delete / Backspace — remove primary + every extra (rooms), or the
+      // selected node / edge.
+      if (e.key === "Delete" || e.key === "Backspace") {
+        if (selectedIds.length > 0) {
+          e.preventDefault();
+          for (const id of selectedIds) removeStore(id);
+        } else if (selectedKind === "node" && selectedId) {
+          e.preventDefault();
+          removeNode(selectedId);
+        } else if (selectedKind === "edge" && selectedId) {
+          e.preventDefault();
+          removeEdge(selectedId);
+        }
+        return;
+      }
+
+      // Arrow keys — nudge by 1u; Shift = 10u
+      if (e.key === "ArrowLeft" || e.key === "ArrowRight" || e.key === "ArrowUp" || e.key === "ArrowDown") {
+        const delta = e.shiftKey ? 10 : 1;
+        const dx = e.key === "ArrowLeft" ? -delta : e.key === "ArrowRight" ? delta : 0;
+        const dy = e.key === "ArrowUp"   ? -delta : e.key === "ArrowDown"  ? delta : 0;
+        if (selectedIds.length > 0) {
+          e.preventDefault();
+          for (const id of selectedIds) {
+            const s = stores.find((ss) => ss.id === id);
+            if (!s) continue;
+            updateStore(id, { polygon: s.polygon.map((p) => ({ x: p.x + dx, y: p.y + dy })) });
+          }
+        } else if (selectedKind === "node" && selectedId) {
+          const n = nodes.find((nn) => nn.id === selectedId);
+          if (n) {
+            e.preventDefault();
+            updateNode(selectedId, { x: n.x + dx, y: n.y + dy });
+          }
+        }
       }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [clearActivePolygon, setSelected, setActivePreset]);
+  }, [
+    clearActivePolygon, setSelected, setActivePreset,
+    selectedId, selectedKind, extraSelectedIds, stores, nodes,
+    addPresetStore, addNode, selectAllStores,
+    removeStore, removeNode, removeEdge,
+    updateStore, updateNode,
+  ]);
 
   const nodeById = (id: string) => nodes.find((n) => n.id === id);
 

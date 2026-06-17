@@ -24,6 +24,8 @@ interface MapBuilderState {
   /** Shift-click on a room: add/remove it from the extra multi-selection. */
   toggleExtraSelection: (id: string) => void;
   clearExtraSelection: () => void;
+  /** Ctrl/Cmd+A — make every given id the active multi-selection at once. */
+  selectAllStores: (ids: string[]) => void;
 
   addPolygonPoint: (pt: { x: number; y: number }) => void;
   commitPolygon: (store: Omit<CanvasStore, "polygon">) => void;
@@ -93,6 +95,11 @@ export const useMapBuilderStore = create<MapBuilderState>((set) => ({
       return { extraSelectedIds };
     }),
   clearExtraSelection: () => set({ extraSelectedIds: [] }),
+  selectAllStores: (ids) => set(
+    ids.length === 0
+      ? { selectedId: null, selectedKind: null, extraSelectedIds: [] }
+      : { selectedId: ids[0], selectedKind: "store" as const, extraSelectedIds: ids.slice(1) },
+  ),
 
   addPolygonPoint: (pt) =>
     set((s) => ({ activePolygon: [...s.activePolygon, pt] })),

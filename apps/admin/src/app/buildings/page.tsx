@@ -21,6 +21,25 @@ export default function BuildingsPage() {
     setForm({ name: "", nameAr: "", slug: "", address: "" });
   };
 
+  const handleRename = async (b: any) => {
+    const name = window.prompt("Building name (EN):", b.name);
+    if (name === null || name.trim() === "" || name === b.name) return;
+    const updated = await api.updateBuilding(b.id, { name: name.trim() });
+    setBuildings((prev) => prev.map((x) => (x.id === b.id ? { ...x, ...updated } : x)));
+  };
+
+  const handleDelete = async (b: any) => {
+    const n = b.floors?.length ?? 0;
+    const msg = `Delete "${b.name}"?\n\n${n} floor(s) and every store / nav node / QR code on them will be removed permanently. This cannot be undone.`;
+    if (!window.confirm(msg)) return;
+    try {
+      await api.deleteBuilding(b.id);
+      setBuildings((prev) => prev.filter((x) => x.id !== b.id));
+    } catch (err: any) {
+      alert(`Delete failed: ${err?.message ?? "unknown error"}`);
+    }
+  };
+
   return (
     <main className="max-w-4xl mx-auto p-8 min-h-screen">
       <div className="flex items-center justify-between mb-8">
@@ -71,18 +90,37 @@ export default function BuildingsPage() {
       ) : (
         <div className="grid gap-3">
           {buildings.map((b) => (
-            <Link
+            <div
               key={b.id}
-              href={`/buildings/${b.id}`}
-              className="bg-white border border-slate-200 hover:border-blue-300 hover:bg-blue-50/50 rounded-xl p-5 flex items-center justify-between transition-colors shadow-sm"
+              className="bg-white border border-slate-200 hover:border-blue-300 hover:bg-blue-50/50 rounded-xl flex items-center transition-colors shadow-sm"
             >
-              <div>
-                <div className="font-semibold text-slate-900">{b.name}</div>
-                <div className="text-slate-500 text-sm" dir="rtl">{b.nameAr}</div>
-                <div className="text-slate-400 text-xs mt-1">{b.floors?.length ?? 0} floor(s) — /{b.slug}</div>
+              <Link href={`/buildings/${b.id}`} className="flex-1 p-5 flex items-center justify-between min-w-0">
+                <div className="min-w-0">
+                  <div className="font-semibold text-slate-900 truncate">{b.name}</div>
+                  <div className="text-slate-500 text-sm truncate" dir="rtl">{b.nameAr}</div>
+                  <div className="text-slate-400 text-xs mt-1">{b.floors?.length ?? 0} floor(s) — /{b.slug}</div>
+                </div>
+                <span className="text-slate-400 text-xl ml-3 flex-shrink-0">›</span>
+              </Link>
+              <div className="flex items-center gap-1 pr-3 pl-1">
+                <button
+                  type="button"
+                  onClick={() => handleRename(b)}
+                  title="Rename"
+                  className="w-9 h-9 rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-700 flex items-center justify-center text-lg"
+                >
+                  ✎
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleDelete(b)}
+                  title="Delete"
+                  className="w-9 h-9 rounded-lg text-slate-400 hover:bg-red-50 hover:text-red-600 flex items-center justify-center text-lg"
+                >
+                  🗑
+                </button>
               </div>
-              <span className="text-slate-400 text-xl">›</span>
-            </Link>
+            </div>
           ))}
         </div>
       )}
