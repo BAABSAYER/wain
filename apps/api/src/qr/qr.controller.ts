@@ -1,19 +1,27 @@
-import { Controller, Get, Post, Delete, Param, Body, Req } from "@nestjs/common";
+import { Controller, Get, Post, Patch, Delete, Param, Body, Req } from "@nestjs/common";
 import { ApiTags } from "@nestjs/swagger";
+import { IsString, IsOptional } from "class-validator";
+import { ApiProperty } from "@nestjs/swagger";
 import { QrService } from "./qr.service";
 
 // Minimal local Request shape (avoids depending on @types/express). All we
 // need is the proxy headers used to auto-detect the public domain.
 type Request = { headers: Record<string, string | string[] | undefined> };
-import { IsString, IsOptional } from "class-validator";
-import { ApiProperty } from "@nestjs/swagger";
 
 class CreateQrDto {
   @ApiProperty() @IsString() buildingId!: string;
   @ApiProperty() @IsString() floorId!: string;
-  @ApiProperty() @IsString() nodeId!: string;
+  // nodeId is optional — a QR can be minted unassigned and linked later.
+  @ApiProperty({ required: false }) @IsString() @IsOptional() nodeId?: string;
   @ApiProperty({ required: false }) @IsString() @IsOptional() label?: string;
   @ApiProperty({ required: false }) @IsString() @IsOptional() appBaseUrl?: string;
+}
+
+class ReassignQrDto {
+  // Pass null to unassign explicitly; omit to leave unchanged.
+  @ApiProperty({ required: false, nullable: true }) @IsOptional() nodeId?: string | null;
+  @ApiProperty({ required: false }) @IsString() @IsOptional() floorId?: string;
+  @ApiProperty({ required: false }) @IsString() @IsOptional() label?: string;
 }
 
 /**
@@ -45,7 +53,7 @@ export class QrController {
     return this.svc.create(
       dto.buildingId,
       dto.floorId,
-      dto.nodeId,
+      dto.nodeId ?? null,
       dto.label ?? "",
       resolveAppBaseUrl(req, dto.appBaseUrl),
     );
@@ -54,8 +62,9 @@ export class QrController {
   /**
    * Bulk-rebuild every QR PNG for a building using the CURRENT request's
    * domain (or an explicit `?appBaseUrl=...`). Use this once after moving
-   * to a new domain — the URL embedded in every existing QR gets updated
-   * in place.
+   * to a new domain or after upgrading to the stable `/qr/<code>` embed —
+   * the QR `code` is unchanged so any sticker already on a wall stays valid;
+   * only the PNG inside the admin gets refreshed.
    */
   @Post("regenerate/:buildingId")
   regenerate(
@@ -64,6 +73,16 @@ export class QrController {
     @Body() body?: { appBaseUrl?: string },
   ) {
     return this.svc.regenerateForBuilding(buildingId, resolveAppBaseUrl(req, body?.appBaseUrl));
+  }
+
+  /**
+   * Reassign a printed QR to a different (or no) nav node. The PNG embedded
+   * URL doesn't change — admins reassign here rather than re-printing the
+   * sticker after a map redraw or node delete.
+   */
+  @Patch(":id")
+  reassign(@Param("id") id: string, @Body() dto: ReassignQrDto) {
+    return this.svc.reassign(id, dto);
   }
 
   @Get("building/:buildingId") findByBuilding(@Param("buildingId") id: string) { return this.svc.findByBuilding(id); }

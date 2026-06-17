@@ -7,16 +7,27 @@ import { randomBytes } from "crypto";
 export class QrService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async create(buildingId: string, floorId: string, nodeId: string, label: string, appBaseUrl: string) {
-    const code = `QR-${randomBytes(4).toString("hex").toUpperCase()}`;
+  /**
+   * Build the URL that gets embedded in the QR PNG. Always code-based
+   * (`/qr/<code>`) so the printed sticker keeps working even if the
+   * underlying nav node is moved, renumbered, or deleted — the resolve
+   * step at scan time looks up whatever node the QR currently points at.
+   */
+  private buildEmbedUrl(appBaseUrl: string, code: string) {
+    return `${appBaseUrl.replace(/\/$/, "")}/qr/${code}`;
+  }
 
-    const url = `${appBaseUrl}/nav/${buildingId}/${floorId}/${nodeId}`;
-    const qrImageUrl = await QRCode.toDataURL(url, {
+  private async renderPng(url: string) {
+    return QRCode.toDataURL(url, {
       errorCorrectionLevel: "M",
       width: 512,
       color: { dark: "#0f172a", light: "#ffffff" },
     });
+  }
 
+  async create(buildingId: string, floorId: string, nodeId: string | null, label: string, appBaseUrl: string) {
+    const code = `QR-${randomBytes(4).toString("hex").toUpperCase()}`;
+    const qrImageUrl = await this.renderPng(this.buildEmbedUrl(appBaseUrl, code));
     return this.prisma.qRPoint.create({
       data: { buildingId, floorId, nodeId, code, label, qrImageUrl },
     });
@@ -26,6 +37,7 @@ export class QrService {
     return this.prisma.qRPoint.findMany({
       where: { buildingId },
       include: { node: true },
+      orderBy: { createdAt: "asc" },
     });
   }
 
@@ -46,20 +58,35 @@ export class QrService {
   }
 
   /**
-   * Re-bake the QR PNG for every QR record on a building using the given
-   * appBaseUrl. The QR `code` (the short string used by /qr/resolve) stays
-   * the same, so any QR already printed and physically stuck on a wall keeps
-   * working — only the URL embedded in the rendered image changes.
+   * Point an existing QR at a different (or no) nav node. Lets a printed
+   * sticker survive node deletes / map redraws — the admin just reassigns
+   * it in the UI; no need to re-print anything.
+   */
+  async reassign(id: string, patch: { nodeId?: string | null; floorId?: string; label?: string }) {
+    const existing = await this.prisma.qRPoint.findUnique({ where: { id } });
+    if (!existing) throw new NotFoundException(`QR ${id} not found`);
+    return this.prisma.qRPoint.update({
+      where: { id },
+      data: {
+        nodeId: patch.nodeId === undefined ? existing.nodeId : patch.nodeId,
+        floorId: patch.floorId ?? existing.floorId,
+        label: patch.label ?? existing.label,
+      },
+      include: { node: true },
+    });
+  }
+
+  /**
+   * Re-render every QR PNG for a building using the current embed URL
+   * scheme. Used after a domain change or to migrate older QRs from the
+   * legacy `/nav/<bid>/<fid>/<nid>` embed to the stable `/qr/<code>`
+   * embed. The QR `code` is unchanged so any sticker already on a wall
+   * stays valid — only the PNG inside the admin gets refreshed.
    */
   async regenerateForBuilding(buildingId: string, appBaseUrl: string) {
     const qrs = await this.prisma.qRPoint.findMany({ where: { buildingId } });
     for (const qr of qrs) {
-      const url = `${appBaseUrl}/nav/${qr.buildingId}/${qr.floorId}/${qr.nodeId}`;
-      const qrImageUrl = await QRCode.toDataURL(url, {
-        errorCorrectionLevel: "M",
-        width: 512,
-        color: { dark: "#0f172a", light: "#ffffff" },
-      });
+      const qrImageUrl = await this.renderPng(this.buildEmbedUrl(appBaseUrl, qr.code));
       await this.prisma.qRPoint.update({ where: { id: qr.id }, data: { qrImageUrl } });
     }
     return { buildingId, appBaseUrl, regenerated: qrs.length };

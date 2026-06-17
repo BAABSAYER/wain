@@ -105,14 +105,17 @@ model QRPoint {
   id         String   @id @default(cuid())
   buildingId String
   floorId    String
-  nodeId     String
+  // nodeId optional + SetNull: deleting a nav node leaves the QR record
+  // behind so the printed sticker stays valid. The admin can reassign it
+  // to a new node without re-printing.
+  nodeId     String?
   code       String   @unique
   label      String   @default("")
   qrImageUrl String?
   createdAt  DateTime @default(now())
 
   building Building @relation(fields: [buildingId], references: [id], onDelete: Cascade)
-  node     NavNode  @relation(fields: [nodeId],     references: [id], onDelete: Cascade)
+  node     NavNode? @relation(fields: [nodeId],     references: [id], onDelete: SetNull)
 }
 
 // ─── Analytics ────────────────────────────────────────────────────────────────

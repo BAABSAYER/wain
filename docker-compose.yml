@@ -97,6 +97,8 @@ services:
     environment:
       NODE_ENV: production
       PORT: "3000"
+      # /qr/<code> Server-Component fetches the api over the compose network.
+      WAIN_API_INTERNAL_URL: http://api:4000/api
     depends_on: [api]
     networks: [wain]
 
