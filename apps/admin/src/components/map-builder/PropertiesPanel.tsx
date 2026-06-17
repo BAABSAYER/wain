@@ -159,6 +159,17 @@ export default function PropertiesPanel() {
           <p className="text-[11px] uppercase tracking-wider text-slate-400 font-semibold mb-2">Routing</p>
           {(() => {
             const linked = store.navNodeId && nodes.some((n) => n.id === store.navNodeId);
+            const linkNearest = () => {
+              if (!store.polygon.length || nodes.length === 0) return;
+              const cx = store.polygon.reduce((a, p) => a + p.x, 0) / store.polygon.length;
+              const cy = store.polygon.reduce((a, p) => a + p.y, 0) / store.polygon.length;
+              let best: typeof nodes[number] | null = null, bestD = Infinity;
+              for (const n of nodes) {
+                const d = (n.x - cx) ** 2 + (n.y - cy) ** 2;
+                if (d < bestD) { bestD = d; best = n; }
+              }
+              if (best) updateStore(store.id, { navNodeId: best.id });
+            };
             return (
               <>
                 {linked ? (
@@ -167,26 +178,51 @@ export default function PropertiesPanel() {
                   </div>
                 ) : (
                   <div className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded px-2.5 py-1.5">
-                    ⚠ Not linked to a nav node — visitors can&apos;t route here. Add nodes, save, then link.
+                    ⚠ Not linked to a nav node — visitors can&apos;t route here.
+                    {nodes.length === 0 && (
+                      <span className="block mt-1 text-amber-700">
+                        Place nodes with the Node tool, then pick one below.
+                      </span>
+                    )}
                   </div>
                 )}
-                <button
-                  onClick={() => {
-                    if (!store.polygon.length || nodes.length === 0) return;
-                    const cx = store.polygon.reduce((a, p) => a + p.x, 0) / store.polygon.length;
-                    const cy = store.polygon.reduce((a, p) => a + p.y, 0) / store.polygon.length;
-                    let best: typeof nodes[number] | null = null, bestD = Infinity;
-                    for (const n of nodes) {
-                      const d = (n.x - cx) ** 2 + (n.y - cy) ** 2;
-                      if (d < bestD) { bestD = d; best = n; }
-                    }
-                    if (best) updateStore(store.id, { navNodeId: best.id });
-                  }}
-                  disabled={nodes.length === 0}
-                  className="mt-2 w-full px-3 py-1.5 bg-blue-50 hover:bg-blue-100 disabled:opacity-40 border border-blue-200 rounded text-sm text-blue-700 font-medium"
-                >
-                  Link to nearest nav node
-                </button>
+
+                <label className="flex flex-col gap-1 mt-2">
+                  <span className="text-xs text-slate-500 font-medium">Linked nav node</span>
+                  <select
+                    value={store.navNodeId ?? ""}
+                    onChange={(e) => updateStore(store.id, { navNodeId: e.target.value || undefined })}
+                    disabled={nodes.length === 0}
+                    className="bg-white border border-slate-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 disabled:bg-slate-50 disabled:text-slate-400 rounded px-3 py-1.5 text-sm text-slate-900 outline-none"
+                  >
+                    <option value="">— Not linked —</option>
+                    {nodes.map((n) => (
+                      <option key={n.id} value={n.id}>
+                        {n.type} — ({Math.round(n.x)}, {Math.round(n.y)})
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <div className="grid grid-cols-2 gap-2 mt-2">
+                  <button
+                    onClick={linkNearest}
+                    disabled={nodes.length === 0}
+                    className="px-3 py-1.5 bg-blue-50 hover:bg-blue-100 disabled:opacity-40 border border-blue-200 rounded text-sm text-blue-700 font-medium"
+                  >
+                    Link nearest
+                  </button>
+                  <button
+                    onClick={() => updateStore(store.id, { navNodeId: undefined })}
+                    disabled={!store.navNodeId}
+                    className="px-3 py-1.5 bg-slate-50 hover:bg-slate-100 disabled:opacity-40 border border-slate-200 rounded text-sm text-slate-700 font-medium"
+                  >
+                    Unlink
+                  </button>
+                </div>
+                <p className="text-[10px] text-slate-400 mt-1.5 leading-relaxed">
+                  Tip: changes are local until you click Save. After saving, every nav node gets a new id from the server — the link is rebuilt automatically.
+                </p>
               </>
             );
           })()}

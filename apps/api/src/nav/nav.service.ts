@@ -68,7 +68,12 @@ export class NavService {
     nodes: Array<{ id?: string; x: number; y: number; type: string }>,
     edges: Array<{ fromId: string; toId: string }>,
   ) {
+    // First: NULL out any Store.navNodeId on this floor so we can safely
+    // delete + recreate nodes (FK relation is RESTRICT by default; without
+    // this any linked store blocks the deleteMany).
+    let idMapObj: Record<string, string> = {};
     await this.prisma.$transaction(async (tx) => {
+      await tx.store.updateMany({ where: { floorId }, data: { navNodeId: null } });
       await tx.navEdge.deleteMany({ where: { fromNode: { floorId } } });
       await tx.navNode.deleteMany({ where: { floorId } });
 
@@ -81,6 +86,7 @@ export class NavService {
       );
 
       const idMap = new Map(nodes.map((n, i) => [n.id ?? String(i), created[i].id]));
+      idMapObj = Object.fromEntries(idMap);
 
       await Promise.all(
         edges.map((e) => {
@@ -99,9 +105,15 @@ export class NavService {
       );
     });
     this.invalidateRouting();
-    // Always return a JSON body — admin client uses res.json() and would
-    // otherwise throw "Unexpected end of JSON input" on a 201 with no body.
-    return { floorId, nodes: nodes.length, edges: edges.length };
+    // nodeIdMap lets the admin client rebind every Store.navNodeId after a
+    // save — without it, links break on the very first save because the
+    // delete+create assigns brand-new ids to every node.
+    return {
+      floorId,
+      nodes: nodes.length,
+      edges: edges.length,
+      nodeIdMap: idMapObj,
+    };
   }
 
   private euclideanDistance(x1: number, y1: number, x2: number, y2: number) {

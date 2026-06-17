@@ -47,55 +47,76 @@ export default function FloorEditorPage() {
     setQrCodes(list.filter((q: QRCode) => q.floorId === floorId));
   }, [buildingId, floorId]);
 
+  // Pull the floor from the API and push it into the map-builder store.
+  // Called on mount AND after each save so client state is rebuilt with the
+  // server-assigned ids (otherwise local-only nanoids from drag-edits stick
+  // around and successive saves create duplicate rows).
+  const reloadFloor = useCallback(async () => {
+    const f = await api.getFloor(floorId);
+    setFloor(f);
+    const canvasStores = (f.stores ?? []).map((s: any) => ({
+      id: s.id, polygon: s.polygon, name: s.name, nameAr: s.nameAr,
+      category: s.category, color: s.color, extrudeHeight: s.extrudeHeight,
+      zone: s.zone ?? "", zoneAr: s.zoneAr ?? "", logoUrl: s.logoUrl ?? "",
+      navNodeId: s.navNodeId ?? null,
+    }));
+    const canvasNodes = (f.navNodes ?? []).map((n: any) => ({
+      id: n.id, x: n.x, y: n.y, type: n.type,
+    }));
+    const canvasEdges = (f.navNodes ?? []).flatMap((n: any) =>
+      (n.edgesFrom ?? []).map((e: any) => ({
+        id: e.id, fromId: e.fromNodeId, toId: e.toNodeId,
+      })),
+    );
+    loadFromApi(canvasStores, canvasNodes, canvasEdges);
+  }, [floorId, loadFromApi]);
+
   // Load floor + QR codes
   useEffect(() => {
-    api.getFloor(floorId).then((f) => {
-      setFloor(f);
-      const canvasStores = (f.stores ?? []).map((s: any) => ({
-        id: s.id, polygon: s.polygon, name: s.name, nameAr: s.nameAr,
-        category: s.category, color: s.color, extrudeHeight: s.extrudeHeight,
-        zone: s.zone ?? "", zoneAr: s.zoneAr ?? "", logoUrl: s.logoUrl ?? "",
-        navNodeId: s.navNodeId ?? null,
-      }));
-      const canvasNodes = (f.navNodes ?? []).map((n: any) => ({
-        id: n.id, x: n.x, y: n.y, type: n.type,
-      }));
-      const canvasEdges = (f.navNodes ?? []).flatMap((n: any) =>
-        (n.edgesFrom ?? []).map((e: any) => ({
-          id: e.id, fromId: e.fromNodeId, toId: e.toNodeId,
-        })),
-      );
-      loadFromApi(canvasStores, canvasNodes, canvasEdges);
-    });
+    reloadFloor();
     refreshQR();
-  }, [floorId, loadFromApi, refreshQR]);
+  }, [reloadFloor, refreshQR]);
 
   const handleSave = useCallback(async () => {
     setIsSaving(true);
     try {
+      // 1. Save the nav graph FIRST. bulkSaveGraph wipes + recreates every
+      //    node (giving each a new DB id), so any subsequent store save
+      //    needs the freshly-minted ids — not the stale ones in local state.
+      const graphRes = await api.bulkSaveGraph(floorId, { nodes, edges });
+      const nodeIdMap = (graphRes?.nodeIdMap ?? {}) as Record<string, string>;
+
+      // 2. Save each store, mapping its in-memory navNodeId through the new
+      //    id map so the link survives the rebuild.
       for (const store of stores) {
+        const mappedNavNodeId = store.navNodeId
+          ? (nodeIdMap[store.navNodeId] ?? null)   // unknown id → unlink rather than dangle
+          : null;
         const exists = floor?.stores?.find((s: any) => s.id === store.id);
         if (exists) {
           await api.updateStore(store.id, {
             name: store.name, nameAr: store.nameAr, category: store.category,
             color: store.color, extrudeHeight: store.extrudeHeight, polygon: store.polygon,
             zone: store.zone || null, zoneAr: store.zoneAr || null, logoUrl: store.logoUrl || null,
-            navNodeId: store.navNodeId || null,
+            navNodeId: mappedNavNodeId,
           });
         } else {
-          await api.createStore({ ...store, floorId, isSearchable: true });
+          await api.createStore({ ...store, floorId, isSearchable: true, navNodeId: mappedNavNodeId });
         }
       }
-      // Save graph (nodes + edges in one call)
-      await api.bulkSaveGraph(floorId, { nodes, edges });
       markClean();
+
+      // 3. Pull the saved state back so local store / node ids are the real
+      //    server-side ones (otherwise the NEXT save would silently create
+      //    duplicates from leftover local nanoids).
+      await reloadFloor();
     } catch (err: any) {
       console.error(err);
       alert(`Save failed: ${err?.message ?? "unknown error"}`);
     } finally {
       setIsSaving(false);
     }
-  }, [stores, nodes, edges, floor, floorId, markClean]);
+  }, [stores, nodes, edges, floor, floorId, markClean, reloadFloor]);
 
   // Triggered when user uses the QR tool and clicks a nav node on the canvas
   const handleCreateQRFromNode = useCallback((nodeId: string) => {
