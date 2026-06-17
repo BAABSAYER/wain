@@ -8,5 +8,8 @@ dist
 *.tsbuildinfo
 prisma/migrations
 
+# web-ifc WASM copied by admin postinstall — generated at install time
+apps/admin/public/web-ifc/
+
 # Claude Code / editor tooling (keep local, includes bypassPermissions)
 .claude/

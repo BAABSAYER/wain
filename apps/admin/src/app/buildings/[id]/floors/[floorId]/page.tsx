@@ -9,6 +9,7 @@ import { usePublicAppUrl } from "@/lib/public-url";
 import PublicUrlSetting from "@/components/PublicUrlSetting";
 import PropertiesPanel from "@/components/map-builder/PropertiesPanel";
 import Toolbar from "@/components/map-builder/Toolbar";
+import CadImportModal from "@/components/map-builder/cad-import/CadImportModal";
 
 const MapCanvas = dynamic(() => import("@/components/map-builder/MapCanvas"), { ssr: false });
 
@@ -23,6 +24,7 @@ export default function FloorEditorPage() {
   const [qrCodes, setQrCodes] = useState<QRCode[]>([]);
   const [isSaving, setIsSaving] = useState(false);
   const [dimensions, setDimensions] = useState({ w: 800, h: 600 });
+  const [cadImportOpen, setCadImportOpen] = useState(false);
 
   // Modal: QR generation prompt when user clicks a node with the QR tool
   const [qrPrompt, setQrPrompt] = useState<{ nodeId: string; label: string } | null>(null);
@@ -196,6 +198,17 @@ export default function FloorEditorPage() {
             <div className="text-xs text-slate-500" dir="rtl">{floor.nameAr}</div>
             <div className="text-[11px] text-slate-400 mt-1">{floor.width} × {floor.height}</div>
 
+            {/* Bulk CAD/BIM import */}
+            <div className="mt-3">
+              <button
+                onClick={() => setCadImportOpen(true)}
+                className="w-full px-2.5 py-1.5 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded text-xs font-medium text-blue-700"
+                title="Import room polygons from a DXF, SVG, or IFC file"
+              >
+                📐 Import from CAD / BIM
+              </button>
+            </div>
+
             {/* Floor-plan image (traced over in the canvas) */}
             <div className="mt-3">
               <span className="text-[11px] text-slate-500 font-medium">Floor plan image</span>
@@ -355,6 +368,14 @@ export default function FloorEditorPage() {
             </div>
           </div>
         </div>
+      )}
+
+      {cadImportOpen && (
+        <CadImportModal
+          floorWidth={floor.width}
+          floorHeight={floor.height}
+          onClose={() => setCadImportOpen(false)}
+        />
       )}
     </div>
   );

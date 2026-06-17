@@ -4,17 +4,21 @@
   "private": true,
   "scripts": {
     "dev": "next dev --port 3001",
+    "prebuild": "node scripts/copy-ifc-wasm.mjs",
     "build": "next build",
-    "start": "next start --port 3001"
+    "start": "next start --port 3001",
+    "postinstall": "node scripts/copy-ifc-wasm.mjs"
   },
   "dependencies": {
     "@wain/types": "workspace:*",
+    "dxf-parser": "^1.1.2",
     "konva": "^9.3.16",
     "next": "15.1.3",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-konva": "^19.0.3",
     "use-image": "^1.1.1",
+    "web-ifc": "^0.0.61",
     "zustand": "^5.0.3"
   },
   "devDependencies": {
