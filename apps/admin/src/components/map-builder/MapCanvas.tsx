@@ -49,6 +49,11 @@ const NODE_COLORS: Record<string, string> = {
   qr: "#ec4899",
 };
 
+const LINE_SNAP_THRESHOLD = 18;
+const LINE_SNAP_EXTENSION = 120;
+
+type Point = { x: number; y: number };
+
 export default function MapCanvas({
   floorPlanUrl, floorWidth, floorHeight, canvasWidth, canvasHeight, onCreateQR,
 }: Props) {
@@ -79,6 +84,40 @@ export default function MapCanvas({
   // Snap a single value (or 2D point) to the nearest grid step. No-op when
   // grid-snap is off so dragging stays smooth/free.
   const snap = useCallback((v: number) => (gridSnap ? Math.round(v / 10) * 10 : v), [gridSnap]);
+
+  const snapToGrid = useCallback((pt: Point): Point => ({
+    x: snap(pt.x),
+    y: snap(pt.y),
+  }), [snap]);
+
+  const snapToNavLine = useCallback((pt: Point, ignoreNodeId?: string): Point => {
+    let best: { point: Point; distance: number } | null = null;
+
+    for (const edge of edges) {
+      if (ignoreNodeId && (edge.fromId === ignoreNodeId || edge.toId === ignoreNodeId)) continue;
+      const from = nodes.find((n) => n.id === edge.fromId);
+      const to = nodes.find((n) => n.id === edge.toId);
+      if (!from || !to) continue;
+
+      const dx = to.x - from.x;
+      const dy = to.y - from.y;
+      const lenSq = dx * dx + dy * dy;
+      if (lenSq === 0) continue;
+
+      const len = Math.sqrt(lenSq);
+      const extensionT = LINE_SNAP_EXTENSION / len;
+      const rawT = ((pt.x - from.x) * dx + (pt.y - from.y) * dy) / lenSq;
+      const t = Math.max(-extensionT, Math.min(1 + extensionT, rawT));
+      const projected = { x: from.x + t * dx, y: from.y + t * dy };
+      const distance = Math.hypot(pt.x - projected.x, pt.y - projected.y);
+
+      if (distance <= LINE_SNAP_THRESHOLD && (!best || distance < best.distance)) {
+        best = { point: projected, distance };
+      }
+    }
+
+    return best ? snapToGrid(best.point) : snapToGrid(pt);
+  }, [edges, nodes, snapToGrid]);
 
   // Right-click context menu state. Anchored at screen coords from the event.
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; storeId: string } | null>(null);
@@ -119,7 +158,7 @@ export default function MapCanvas({
     if (!clickedEmpty) return;
 
     const raw = getStagePos();
-    const pos = { x: snap(raw.x), y: snap(raw.y) };
+    const pos = tool === "node" ? snapToNavLine(raw) : snapToGrid(raw);
     if (tool === "polygon") { pushSnapshot(); addPolygonPoint(pos); return; }
     if (tool === "node")    { pushSnapshot(); addNode({ id: nanoid(), x: pos.x, y: pos.y, type: "path" }); return; }
     if (tool === "shape" && activePreset) {
@@ -138,7 +177,7 @@ export default function MapCanvas({
       // Keep the preset selected so the user can drop several in a row.
       return;
     }
-  }, [tool, activePreset, getStagePos, addPolygonPoint, addNode, addPresetStore, setSelected, pushSnapshot, snap]);
+  }, [tool, activePreset, getStagePos, addPolygonPoint, addNode, addPresetStore, setSelected, pushSnapshot, snapToGrid, snapToNavLine]);
 
   const handleStageDblClick = useCallback(() => {
     if (tool === "polygon" && activePolygon.length >= 3) {
@@ -181,6 +220,12 @@ export default function MapCanvas({
     e.cancelBubble = true;
     if (tool === "select") setSelected(edgeId, "edge");
   }, [tool, setSelected]);
+
+  const handleNodeDragMove = useCallback((nodeId: string, e: any) => {
+    const pos = snapToNavLine({ x: e.target.x(), y: e.target.y() }, nodeId);
+    e.target.position(pos);
+    updateNode(nodeId, pos);
+  }, [snapToNavLine, updateNode]);
 
   const handleStoreClick = useCallback((storeId: string, e: any) => {
     e.cancelBubble = true;
@@ -717,8 +762,13 @@ export default function MapCanvas({
                         fill="#ffffff"
                         stroke={baseColor}
                         strokeWidth={3}
+                        draggable={tool === "select"}
+                        onDragStart={() => { pushSnapshot(); }}
+                        onDragMove={(e: any) => handleNodeDragMove(node.id, e)}
                         onClick={(e: any) => handleNodeClick(node.id, e)}
                         onTap={(e: any) => handleNodeClick(node.id, e)}
+                        onMouseEnter={() => tool === "select" && setCursor("move")}
+                        onMouseLeave={() => tool === "select" && setCursor("crosshair")}
                         shadowBlur={isEdgeStart || isSel || (linkModeStoreId ? 12 : 0)}
                         shadowColor={isLinked ? "#10b981" : baseColor}
                       />

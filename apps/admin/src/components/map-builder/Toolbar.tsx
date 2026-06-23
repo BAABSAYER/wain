@@ -9,7 +9,7 @@ const TOOLS: { id: DrawTool; label: string; icon: string; hint: string }[] = [
   { id: "pan",     label: "Pan",      icon: "✋", hint: "Drag to move around the canvas" },
   { id: "polygon", label: "Free Draw",icon: "⬡", hint: "Click to add corners, double-click to close" },
   { id: "shape",   label: "Shape",    icon: "⬜", hint: "Pick a preset shape, then click the canvas to drop it" },
-  { id: "node",    label: "Node",     icon: "●", hint: "Click to drop a nav node" },
+  { id: "node",    label: "Node",     icon: "●", hint: "Click to drop a nav node. Near an existing line, it snaps onto that line." },
   { id: "edge",    label: "Edge",     icon: "—", hint: "Click two nodes to connect them" },
   { id: "qr",      label: "QR",       icon: "▣", hint: "Click a nav node to create a QR scan point" },
 ];
