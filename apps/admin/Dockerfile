@@ -35,8 +35,9 @@ ENV NODE_ENV=production
 ENV PORT=3001
 ENV HOSTNAME=0.0.0.0
 ENV NEXT_TELEMETRY_DISABLED=1
-COPY --from=build /app/apps/admin/.next/standalone ./
-COPY --from=build /app/apps/admin/.next/static ./apps/admin/.next/static
-COPY --from=build /app/apps/admin/public ./apps/admin/public
+COPY --from=build --chown=node:node /app/apps/admin/.next/standalone ./
+COPY --from=build --chown=node:node /app/apps/admin/.next/static ./apps/admin/.next/static
+COPY --from=build --chown=node:node /app/apps/admin/public ./apps/admin/public
 EXPOSE 3001
+USER node
 CMD ["node", "apps/admin/server.js"]
