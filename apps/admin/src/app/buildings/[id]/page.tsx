@@ -18,13 +18,33 @@ interface QRCode {
   qrImageUrl?: string;
 }
 
+type FloorForm = {
+  name: string;
+  nameAr: string;
+  level: number;
+  width: number;
+  height: number;
+  floorPlanUrl: string;
+};
+
+const emptyFloorForm: FloorForm = {
+  name: "",
+  nameAr: "",
+  level: 0,
+  width: 2000,
+  height: 1400,
+  floorPlanUrl: "",
+};
+
 export default function BuildingPage() {
   const { id } = useParams<{ id: string }>();
   const [building, setBuilding] = useState<any>(null);
   const [qrCodes, setQrCodes] = useState<QRCode[]>([]);
   const [showFloorForm, setShowFloorForm] = useState(false);
   const [showQrForm, setShowQrForm] = useState(false);
-  const [floorForm, setFloorForm] = useState({ name: "", nameAr: "", level: 0, width: 2000, height: 1400 });
+  const [floorForm, setFloorForm] = useState<FloorForm>(emptyFloorForm);
+  const [editingFloorId, setEditingFloorId] = useState<string | null>(null);
+  const [editFloorForm, setEditFloorForm] = useState<FloorForm>(emptyFloorForm);
   const [qrForm, setQrForm] = useState({ floorId: "", nodeId: "", label: "" });
   const [qrError, setQrError] = useState<string | null>(null);
   const { url: publicAppUrl } = usePublicAppUrl();
@@ -42,16 +62,46 @@ export default function BuildingPage() {
 
   const handleCreateFloor = async (e: React.FormEvent) => {
     e.preventDefault();
-    await api.createFloor({ buildingId: id, ...floorForm });
+    await api.createFloor({
+      buildingId: id,
+      ...floorForm,
+      floorPlanUrl: floorForm.floorPlanUrl.trim() || undefined,
+    });
     setShowFloorForm(false);
-    setFloorForm({ name: "", nameAr: "", level: 0, width: 2000, height: 1400 });
+    setFloorForm(emptyFloorForm);
     await refresh();
   };
 
-  const handleRenameFloor = async (f: any) => {
-    const name = window.prompt(`Floor name (EN):`, f.name);
-    if (name === null || name.trim() === "" || name === f.name) return;
-    await api.updateFloor(f.id, { name: name.trim() });
+  const openEditFloor = (f: any) => {
+    setShowFloorForm(false);
+    setEditingFloorId(f.id);
+    setEditFloorForm({
+      name: f.name ?? "",
+      nameAr: f.nameAr ?? "",
+      level: Number(f.level ?? 0),
+      width: Number(f.width ?? 2000),
+      height: Number(f.height ?? 1400),
+      floorPlanUrl: f.floorPlanUrl ?? "",
+    });
+  };
+
+  const closeEditFloor = () => {
+    setEditingFloorId(null);
+    setEditFloorForm(emptyFloorForm);
+  };
+
+  const handleUpdateFloor = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingFloorId) return;
+    await api.updateFloor(editingFloorId, {
+      name: editFloorForm.name.trim(),
+      nameAr: editFloorForm.nameAr.trim(),
+      level: editFloorForm.level,
+      width: editFloorForm.width,
+      height: editFloorForm.height,
+      floorPlanUrl: editFloorForm.floorPlanUrl.trim() || null,
+    });
+    closeEditFloor();
     await refresh();
   };
 
@@ -191,6 +241,10 @@ export default function BuildingPage() {
                 <input type="number" required className="bg-white border border-slate-300 rounded px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500" value={floorForm.height} onChange={(e) => setFloorForm({ ...floorForm, height: Number(e.target.value) })} />
               </label>
             </div>
+            <label className="flex flex-col gap-1">
+              <span className="text-xs text-slate-500 font-medium">Floor plan URL</span>
+              <input className="bg-white border border-slate-300 rounded px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500" value={floorForm.floorPlanUrl} onChange={(e) => setFloorForm({ ...floorForm, floorPlanUrl: e.target.value })} placeholder="https://..." />
+            </label>
             <div className="flex gap-3 justify-end">
               <button type="button" onClick={() => setShowFloorForm(false)} className="px-4 py-2 text-slate-500 hover:text-slate-700 text-sm">Cancel</button>
               <button type="submit" className="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg text-sm font-medium shadow-sm">Create</button>
@@ -222,8 +276,8 @@ export default function BuildingPage() {
               <div className="flex items-center gap-1 pr-3 pl-1">
                 <button
                   type="button"
-                  onClick={() => handleRenameFloor(f)}
-                  title="Rename floor"
+                  onClick={() => openEditFloor(f)}
+                  title="Edit floor"
                   className="w-9 h-9 rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-700 flex items-center justify-center text-lg"
                 >
                   ✎
@@ -412,6 +466,56 @@ export default function BuildingPage() {
       </section>
 
       {/* ───── Reassign QR modal ───── */}
+      {editingFloorId && (
+        <div
+          className="fixed inset-0 z-50 bg-slate-900/40 flex items-center justify-center p-4"
+          onMouseDown={(e) => { if (e.target === e.currentTarget) closeEditFloor(); }}
+        >
+          <form onSubmit={handleUpdateFloor} className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl p-6 flex flex-col gap-4">
+            <div>
+              <h3 className="text-lg font-semibold text-slate-900">Edit floor</h3>
+              <p className="text-xs text-slate-500 mt-1">Update names, level, canvas size, and floor plan image URL.</p>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <label className="flex flex-col gap-1">
+                <span className="text-xs text-slate-500 font-medium">Name (EN)</span>
+                <input required className="bg-white border border-slate-300 rounded px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500" value={editFloorForm.name} onChange={(e) => setEditFloorForm({ ...editFloorForm, name: e.target.value })} />
+              </label>
+              <label className="flex flex-col gap-1">
+                <span className="text-xs text-slate-500 font-medium">Name (AR)</span>
+                <input dir="rtl" required className="bg-white border border-slate-300 rounded px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500" value={editFloorForm.nameAr} onChange={(e) => setEditFloorForm({ ...editFloorForm, nameAr: e.target.value })} />
+              </label>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <label className="flex flex-col gap-1">
+                <span className="text-xs text-slate-500 font-medium">Level</span>
+                <input type="number" required className="bg-white border border-slate-300 rounded px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500" value={editFloorForm.level} onChange={(e) => setEditFloorForm({ ...editFloorForm, level: Number(e.target.value) })} />
+              </label>
+              <label className="flex flex-col gap-1">
+                <span className="text-xs text-slate-500 font-medium">Width</span>
+                <input type="number" min={1} required className="bg-white border border-slate-300 rounded px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500" value={editFloorForm.width} onChange={(e) => setEditFloorForm({ ...editFloorForm, width: Number(e.target.value) })} />
+              </label>
+              <label className="flex flex-col gap-1">
+                <span className="text-xs text-slate-500 font-medium">Height</span>
+                <input type="number" min={1} required className="bg-white border border-slate-300 rounded px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500" value={editFloorForm.height} onChange={(e) => setEditFloorForm({ ...editFloorForm, height: Number(e.target.value) })} />
+              </label>
+            </div>
+
+            <label className="flex flex-col gap-1">
+              <span className="text-xs text-slate-500 font-medium">Floor plan URL</span>
+              <input className="bg-white border border-slate-300 rounded px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500" value={editFloorForm.floorPlanUrl} onChange={(e) => setEditFloorForm({ ...editFloorForm, floorPlanUrl: e.target.value })} placeholder="Leave empty to remove" />
+            </label>
+
+            <div className="flex justify-end gap-2 mt-1">
+              <button type="button" onClick={closeEditFloor} className="px-4 py-2 text-sm text-slate-500 hover:text-slate-700">Cancel</button>
+              <button type="submit" className="px-4 py-2 text-sm font-semibold bg-blue-500 hover:bg-blue-600 text-white rounded-lg shadow-sm">Save changes</button>
+            </div>
+          </form>
+        </div>
+      )}
+
       {reassignQr && (
         <div
           className="fixed inset-0 z-50 bg-slate-900/40 flex items-center justify-center p-4"

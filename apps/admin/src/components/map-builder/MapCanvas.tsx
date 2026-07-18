@@ -119,6 +119,24 @@ export default function MapCanvas({
     return best ? snapToGrid(best.point) : snapToGrid(pt);
   }, [edges, nodes, snapToGrid]);
 
+  const getStoreLinkedNodeIds = useCallback((store: typeof stores[number]) => {
+    return store.navLinkNodeIds && store.navLinkNodeIds.length > 0
+      ? store.navLinkNodeIds
+      : (store.navNodeId ? [store.navNodeId] : []);
+  }, []);
+
+  const selectedStore = selectedKind === "store" && selectedId
+    ? stores.find((s) => s.id === selectedId) ?? null
+    : null;
+  const selectedStoreLinkedNodeIds = selectedStore ? getStoreLinkedNodeIds(selectedStore) : [];
+  const selectedNodeLinkedStoreIds = selectedKind === "node" && selectedId
+    ? stores
+        .filter((store) => getStoreLinkedNodeIds(store).includes(selectedId))
+        .map((store) => store.id)
+    : [];
+  const highlightedNodeIds = new Set(selectedStoreLinkedNodeIds);
+  const highlightedStoreIds = new Set(selectedNodeLinkedStoreIds);
+
   // Right-click context menu state. Anchored at screen coords from the event.
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; storeId: string } | null>(null);
   const closeCtxMenu = useCallback(() => setCtxMenu(null), []);
@@ -604,6 +622,7 @@ export default function MapCanvas({
           {stores.map((store) => {
             const isPrimary = selectedKind === "store" && selectedId === store.id;
             const isExtra = selectedKind === "store" && extraSelectedIds.includes(store.id);
+            const isBoundHighlight = highlightedStoreIds.has(store.id);
             const isSel = isPrimary || isExtra;
             // Whole-shape drag only the primary so multi-select stays a
             // batch-edit gesture — moving a group at once is a separate feature.
@@ -617,9 +636,11 @@ export default function MapCanvas({
                   }}
                   points={store.polygon.flatMap((p) => [p.x, p.y])}
                   closed
-                  fill={`${store.color}cc`}
-                  stroke={isSel ? "#2563eb" : "#475569"}
-                  strokeWidth={isSel ? 2.5 : 1}
+                  fill={isBoundHighlight ? "#fef3c7cc" : `${store.color}cc`}
+                  stroke={isSel ? "#2563eb" : isBoundHighlight ? "#f59e0b" : "#475569"}
+                  strokeWidth={isSel ? 2.5 : isBoundHighlight ? 3 : 1}
+                  shadowBlur={isBoundHighlight ? 12 : 0}
+                  shadowColor="#f59e0b"
                   onClick={(e: any) => handleStoreClick(store.id, e)}
                   onTap={(e: any) => handleStoreClick(store.id, e)}
                   onMouseDown={(e: any) => {
@@ -715,17 +736,9 @@ export default function MapCanvas({
 
           {(() => {
             // In link mode, compute which nodes are currently linked to the
-            // active store so each one can get a green-ring outline. Also
-            // grab the store's polygon centroid for the dashed connector
-            // lines drawn below.
+            // active store so each one can get a green-ring outline.
             const activeStore = linkModeStoreId ? stores.find((s) => s.id === linkModeStoreId) : null;
-            const linkedSet = new Set<string>(
-              activeStore
-                ? (activeStore.navLinkNodeIds && activeStore.navLinkNodeIds.length > 0
-                    ? activeStore.navLinkNodeIds
-                    : (activeStore.navNodeId ? [activeStore.navNodeId] : []))
-                : [],
-            );
+            const linkedSet = new Set<string>(activeStore ? getStoreLinkedNodeIds(activeStore) : []);
             const centroid = activeStore && activeStore.polygon.length > 0
               ? {
                   x: activeStore.polygon.reduce((a, p) => a + p.x, 0) / activeStore.polygon.length,
@@ -753,15 +766,16 @@ export default function MapCanvas({
                   const isSel = selectedKind === "node" && selectedId === node.id;
                   const isEdgeStart = edgeStart === node.id;
                   const isLinked = linkedSet.has(node.id);
+                  const isBoundHighlight = highlightedNodeIds.has(node.id);
                   const baseColor = NODE_COLORS[node.type] ?? "#3b82f6";
                   return (
                     <Group key={node.id}>
                       <Circle
                         x={node.x} y={node.y}
-                        radius={isEdgeStart || (linkModeStoreId && !isLinked) ? 11 : 8}
+                        radius={isEdgeStart || isBoundHighlight || (linkModeStoreId && !isLinked) ? 11 : 8}
                         fill="#ffffff"
-                        stroke={baseColor}
-                        strokeWidth={3}
+                        stroke={isBoundHighlight ? "#f59e0b" : baseColor}
+                        strokeWidth={isBoundHighlight ? 4 : 3}
                         draggable={tool === "select"}
                         onDragStart={() => { pushSnapshot(); }}
                         onDragMove={(e: any) => handleNodeDragMove(node.id, e)}
@@ -769,8 +783,8 @@ export default function MapCanvas({
                         onTap={(e: any) => handleNodeClick(node.id, e)}
                         onMouseEnter={() => tool === "select" && setCursor("move")}
                         onMouseLeave={() => tool === "select" && setCursor("crosshair")}
-                        shadowBlur={isEdgeStart || isSel || (linkModeStoreId ? 12 : 0)}
-                        shadowColor={isLinked ? "#10b981" : baseColor}
+                        shadowBlur={isEdgeStart || isSel || isBoundHighlight || (linkModeStoreId ? 12 : 0)}
+                        shadowColor={isLinked ? "#10b981" : isBoundHighlight ? "#f59e0b" : baseColor}
                       />
                       <Circle
                         x={node.x} y={node.y}
@@ -794,6 +808,15 @@ export default function MapCanvas({
                           radius={14}
                           stroke="#10b981"
                           strokeWidth={2.5}
+                          listening={false}
+                        />
+                      )}
+                      {isBoundHighlight && (
+                        <Circle
+                          x={node.x} y={node.y}
+                          radius={17}
+                          stroke="#f59e0b"
+                          strokeWidth={3}
                           listening={false}
                         />
                       )}
