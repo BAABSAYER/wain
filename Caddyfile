@@ -10,6 +10,19 @@
 :{$HTTP_PORT:8787} {
 	encode zstd gzip
 
+	# Drop hostile Next.js Server Actions probes before they reach Next.
+	# This app does not use Server Actions, and these POSTs are CPU-heavy.
+	@nextActionProbe {
+		header Next-Action *
+	}
+	respond @nextActionProbe "Forbidden" 403
+
+	# This service is not a forward proxy.
+	@connectProbe {
+		method CONNECT
+	}
+	respond @connectProbe "Forbidden" 403
+
 	# API — keep the /api prefix (NestJS expects it), don't strip.
 	handle /api/* {
 		reverse_proxy api:4000
