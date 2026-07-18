@@ -20,6 +20,7 @@ interface QRCode {
 
 export default function FloorEditorPage() {
   const { id: buildingId, floorId } = useParams<{ id: string; floorId: string }>();
+  const [building, setBuilding] = useState<any>(null);
   const [floor, setFloor] = useState<any>(null);
   const [qrCodes, setQrCodes] = useState<QRCode[]>([]);
   const [isSaving, setIsSaving] = useState(false);
@@ -54,7 +55,11 @@ export default function FloorEditorPage() {
   // server-assigned ids (otherwise local-only nanoids from drag-edits stick
   // around and successive saves create duplicate rows).
   const reloadFloor = useCallback(async () => {
-    const f = await api.getFloor(floorId);
+    const [f, b] = await Promise.all([
+      api.getFloor(floorId),
+      api.getBuilding(buildingId),
+    ]);
+    setBuilding(b);
     setFloor(f);
     const canvasStores = (f.stores ?? []).map((s: any) => ({
       id: s.id, polygon: s.polygon, name: s.name, nameAr: s.nameAr,
@@ -68,14 +73,18 @@ export default function FloorEditorPage() {
     }));
     const canvasNodes = (f.navNodes ?? []).map((n: any) => ({
       id: n.id, x: n.x, y: n.y, type: n.type,
+      connectedFloorNodeId: n.connectedFloorNodeId ?? null,
     }));
+    const currentNodeIds = new Set(canvasNodes.map((n: any) => n.id));
     const canvasEdges = (f.navNodes ?? []).flatMap((n: any) =>
-      (n.edgesFrom ?? []).map((e: any) => ({
-        id: e.id, fromId: e.fromNodeId, toId: e.toNodeId,
-      })),
+      (n.edgesFrom ?? [])
+        .filter((e: any) => currentNodeIds.has(e.toNodeId))
+        .map((e: any) => ({
+          id: e.id, fromId: e.fromNodeId, toId: e.toNodeId,
+        })),
     );
     loadFromApi(canvasStores, canvasNodes, canvasEdges);
-  }, [floorId, loadFromApi]);
+  }, [buildingId, floorId, loadFromApi]);
 
   // Load floor + QR codes
   useEffect(() => {
@@ -343,7 +352,7 @@ export default function FloorEditorPage() {
           <div className="p-3 border-b border-slate-200 text-xs text-slate-500 font-semibold uppercase tracking-wider">
             Properties
           </div>
-          <PropertiesPanel />
+          <PropertiesPanel floors={building?.floors ?? []} currentFloorId={floorId} />
         </aside>
       </div>
 

@@ -43,8 +43,21 @@ export class NavService {
   }
 
   async createEdge(dto: CreateEdgeDto) {
-    const distance = dto.distance ??
-      this.euclideanDistance(dto.fromX, dto.fromY, dto.toX, dto.toY);
+    let distance = dto.distance;
+    if (distance === undefined) {
+      if (
+        dto.fromX !== undefined && dto.fromY !== undefined &&
+        dto.toX !== undefined && dto.toY !== undefined
+      ) {
+        distance = this.euclideanDistance(dto.fromX, dto.fromY, dto.toX, dto.toY);
+      } else {
+        const [from, to] = await Promise.all([
+          this.prisma.navNode.findUnique({ where: { id: dto.fromNodeId }, select: { x: true, y: true } }),
+          this.prisma.navNode.findUnique({ where: { id: dto.toNodeId }, select: { x: true, y: true } }),
+        ]);
+        distance = from && to ? this.euclideanDistance(from.x, from.y, to.x, to.y) : 1;
+      }
+    }
     const edge = await this.prisma.navEdge.create({
       data: {
         fromNodeId: dto.fromNodeId,
@@ -65,9 +78,15 @@ export class NavService {
 
   async bulkSaveGraph(
     floorId: string,
-    nodes: Array<{ id?: string; x: number; y: number; type: string }>,
+    nodes: Array<{ id?: string; x: number; y: number; type: string; connectedFloorNodeId?: string | null }>,
     edges: Array<{ fromId: string; toId: string }>,
   ) {
+    const floor = await this.prisma.floor.findUnique({
+      where: { id: floorId },
+      select: { buildingId: true },
+    });
+    if (!floor) throw new NotFoundException(`Floor ${floorId} not found`);
+
     // UPSERT semantics, not delete+recreate. Nodes that existed and are still
     // in the incoming list keep their DB ids; new ones get fresh ids; ones
     // that disappeared get deleted (cleanly nulling any Store.navNodeId that
@@ -93,6 +112,20 @@ export class NavService {
       // Edges always get rebuilt — they're cheap, and their ids don't
       // matter to anyone outside the routing engine.
       await tx.navEdge.deleteMany({ where: { fromNode: { floorId } } });
+      const buildingEdges = await tx.navEdge.findMany({
+        where: { fromNode: { floor: { buildingId: floor.buildingId } } },
+        select: {
+          id: true,
+          fromNode: { select: { floorId: true } },
+          toNode: { select: { floorId: true } },
+        },
+      });
+      const crossFloorEdgeIds = buildingEdges
+        .filter((e) => e.fromNode.floorId !== e.toNode.floorId)
+        .map((e) => e.id);
+      if (crossFloorEdgeIds.length > 0) {
+        await tx.navEdge.deleteMany({ where: { id: { in: crossFloorEdgeIds } } });
+      }
       if (toDelete.length > 0) {
         await tx.navNode.deleteMany({ where: { id: { in: toDelete } } });
       }
@@ -103,12 +136,25 @@ export class NavService {
         if (n.id && existingIds.has(n.id)) {
           await tx.navNode.update({
             where: { id: n.id },
-            data: { x: n.x, y: n.y, type: n.type, z: 0 },
+            data: {
+              x: n.x,
+              y: n.y,
+              type: n.type,
+              z: 0,
+              connectedFloorNodeId: n.connectedFloorNodeId || null,
+            },
           });
           idMap.set(n.id, n.id); // identity — link survives
         } else {
           const created = await tx.navNode.create({
-            data: { floorId, x: n.x, y: n.y, type: n.type, z: 0 },
+            data: {
+              floorId,
+              x: n.x,
+              y: n.y,
+              type: n.type,
+              z: 0,
+              connectedFloorNodeId: n.connectedFloorNodeId || null,
+            },
           });
           idMap.set(n.id ?? `__idx_${idMap.size}`, created.id);
         }
@@ -131,6 +177,26 @@ export class NavService {
           });
         }).filter(Boolean),
       );
+
+      const buildingNodes = await tx.navNode.findMany({
+        where: { floor: { buildingId: floor.buildingId } },
+        select: { id: true, floorId: true, type: true, connectedFloorNodeId: true },
+      });
+      const nodeById = new Map(buildingNodes.map((n) => [n.id, n]));
+      const transitionEdges = buildingNodes.flatMap((n) => {
+        if (!n.connectedFloorNodeId) return [];
+        const target = nodeById.get(n.connectedFloorNodeId);
+        if (!target || target.floorId === n.floorId) return [];
+        const distance = n.type === "elevator" ? 30 : 20;
+        const isAccessible = n.type === "elevator";
+        return [
+          { fromNodeId: n.id, toNodeId: target.id, distance, isAccessible },
+          { fromNodeId: target.id, toNodeId: n.id, distance, isAccessible },
+        ];
+      });
+      if (transitionEdges.length > 0) {
+        await tx.navEdge.createMany({ data: transitionEdges, skipDuplicates: true });
+      }
     });
     this.invalidateRouting();
     return {

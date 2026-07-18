@@ -167,6 +167,7 @@ export interface CanvasNode {
   x: number;
   y: number;
   type: NodeType;
+  connectedFloorNodeId?: string | null;
 }
 
 export interface CanvasEdge {

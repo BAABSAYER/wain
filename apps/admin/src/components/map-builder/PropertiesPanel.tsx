@@ -9,6 +9,7 @@ const CATEGORIES: StoreCategory[] = [
 ];
 
 const NODE_TYPES = ["path", "entrance", "elevator", "stairs", "escalator", "qr"] as const;
+const FLOOR_TRANSITION_TYPES = new Set(["elevator", "stairs", "escalator"]);
 
 const COLORS = [
   "#ffffff","#cbd5e1","#94a3b8","#64748b",
@@ -18,7 +19,18 @@ const COLORS = [
   "#ef4444","#ec4899","#f472b6","#a78bfa",
 ];
 
-export default function PropertiesPanel() {
+interface Props {
+  floors?: Array<{
+    id: string;
+    name: string;
+    nameAr?: string;
+    level: number;
+    navNodes?: Array<{ id: string; x: number; y: number; type: string }>;
+  }>;
+  currentFloorId?: string;
+}
+
+export default function PropertiesPanel({ floors = [], currentFloorId }: Props) {
   const {
     selectedId, selectedKind, extraSelectedIds, stores, nodes, edges,
     updateStore, removeStore, updateNode, removeNode, removeEdge,
@@ -279,6 +291,16 @@ export default function PropertiesPanel() {
   }
 
   if (node) {
+    const canLinkFloor = FLOOR_TRANSITION_TYPES.has(node.type);
+    const transitionNodeOptions = floors
+      .filter((f) => f.id !== currentFloorId)
+      .flatMap((f) =>
+        (f.navNodes ?? [])
+          .filter((n) => FLOOR_TRANSITION_TYPES.has(n.type))
+          .map((n) => ({ ...n, floor: f })),
+      );
+    const connectedTarget = transitionNodeOptions.find((n) => n.id === node.connectedFloorNodeId);
+
     return (
       <div className="p-4 flex flex-col gap-4">
         <h3 className="font-semibold text-slate-900">Nav Node</h3>
@@ -293,6 +315,32 @@ export default function PropertiesPanel() {
             {NODE_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
           </select>
         </label>
+
+        {canLinkFloor && (
+          <label className="flex flex-col gap-1">
+            <span className="text-xs text-slate-500 font-medium">Connected floor node</span>
+            <select
+              className="bg-white border border-slate-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 rounded px-3 py-1.5 text-sm text-slate-900 outline-none"
+              value={node.connectedFloorNodeId ?? ""}
+              onChange={(e) => updateNode(node.id, { connectedFloorNodeId: e.target.value || null })}
+            >
+              <option value="">Not linked</option>
+              {transitionNodeOptions.map((n) => (
+                <option key={n.id} value={n.id}>
+                  {n.floor.name} · Level {n.floor.level} · {n.type} ({Math.round(n.x)}, {Math.round(n.y)})
+                </option>
+              ))}
+            </select>
+            <span className="text-[11px] text-slate-400 leading-snug">
+              Link this {node.type} to the matching node on another floor. The route engine will use this as a floor transition.
+            </span>
+            {node.connectedFloorNodeId && !connectedTarget && (
+              <span className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1">
+                Linked node is not in the loaded building list. Save carefully or reselect a target.
+              </span>
+            )}
+          </label>
+        )}
 
         <div className="grid grid-cols-2 gap-3">
           <label className="flex flex-col gap-1">
