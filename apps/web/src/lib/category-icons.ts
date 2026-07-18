@@ -22,5 +22,5 @@ export function categoryGlyph(category: string | undefined | null): string {
 
 /** Returns true for categories representing open/walkable space (not extruded rooms). */
 export function isOpenSpace(category: string | undefined | null): boolean {
-  return category === "other";
+  return false;
 }
