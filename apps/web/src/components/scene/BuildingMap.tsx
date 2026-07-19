@@ -2,7 +2,7 @@
 import { useRef, useEffect, useState, useImperativeHandle, forwardRef, useMemo } from "react";
 import maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
-import { isOpenSpace, categoryGlyph } from "@/lib/category-icons";
+import { isOpenSpace, categoryGlyph, categoryVisual } from "@/lib/category-icons";
 
 // ─── Types (mirror BuildingScene so the page can swap engines freely) ─────────
 
@@ -35,6 +35,15 @@ function amenityBadge(s: StoreData): { icon: string; bg: string } | null {
     default: return null;
   }
 }
+
+const LANDMARK_CATEGORIES = new Set(["restroom", "elevator", "stairs", "escalator", "entrance", "parking", "services"]);
+
+function categoryMarker(s: StoreData): { icon: string; bg: string } | null {
+  if (!LANDMARK_CATEGORIES.has(s.category)) return null;
+  const visual = categoryVisual(s.category);
+  return { icon: visual.glyph, bg: visual.accent };
+}
+
 interface RouteStep { nodeId: string; floorId: string; x: number; y: number; z: number; }
 interface NavLine { a: { x: number; y: number }; b: { x: number; y: number }; }
 
@@ -150,6 +159,34 @@ function makeChevronImage(): { width: number; height: number; data: Uint8Array }
   return { width: size, height: size, data: new Uint8Array(img.data.buffer) };
 }
 
+/** Light floor texture so large empty plans do not read as a flat white slab. */
+function makeFloorPatternImage(): { width: number; height: number; data: Uint8Array } {
+  const size = 64;
+  const canvas = document.createElement("canvas");
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext("2d")!;
+  ctx.clearRect(0, 0, size, size);
+  ctx.strokeStyle = "rgba(176, 163, 137, 0.34)";
+  ctx.lineWidth = 1;
+  for (let x = 0.5; x <= size; x += 16) {
+    ctx.beginPath();
+    ctx.moveTo(x, 0);
+    ctx.lineTo(x, size);
+    ctx.stroke();
+  }
+  for (let y = 0.5; y <= size; y += 16) {
+    ctx.beginPath();
+    ctx.moveTo(0, y);
+    ctx.lineTo(size, y);
+    ctx.stroke();
+  }
+  ctx.strokeStyle = "rgba(255, 255, 255, 0.58)";
+  ctx.strokeRect(0.5, 0.5, size - 1, size - 1);
+  const img = ctx.getImageData(0, 0, size, size);
+  return { width: size, height: size, data: new Uint8Array(img.data.buffer) };
+}
+
 const BuildingMap = forwardRef<BuildingMapHandle, Props>(function BuildingMap(
   { stores, routeSteps, destinationId, selectedId, highlightCategory = null, floorWidth, floorHeight,
     origin, focus, heading, initialAzimuth, locale = "en", navEdges = [], onProjection, onBlockClick },
@@ -198,12 +235,15 @@ const BuildingMap = forwardRef<BuildingMapHandle, Props>(function BuildingMap(
       .map((s) => {
         const ring = s.polygon.map((p) => toLngLat(p.x, p.y));
         ring.push(ring[0]); // close
+        const visual = categoryVisual(s.category);
         return {
           type: "Feature" as const,
           id: s.id,
           properties: {
             id: s.id, name: s.name, nameAr: s.nameAr,
             category: s.category, color: s.color || "#ffffff",
+            accent: visual.accent,
+            categoryFill: visual.fill,
             height: heightMeters(s),
           },
           geometry: { type: "Polygon" as const, coordinates: [ring] },
@@ -258,8 +298,25 @@ const BuildingMap = forwardRef<BuildingMapHandle, Props>(function BuildingMap(
     ["==", ["get", "id"], selectedId ?? "__none__"], SELECTED_COLOR,
     ["==", ["get", "category"], highlightCategory ?? "__none__"], CATEGORY_HIGHLIGHT_COLOR,
     ["boolean", ["feature-state", "hover"], false], HOVER_COLOR,
+    ["==", ["coalesce", ["get", "color"], "#ffffff"], "#ffffff"], ["get", "categoryFill"],
     ["coalesce", ["get", "color"], DEFAULT_BLOCK_COLOR],
   ] as any), [destinationId, selectedId, highlightCategory]);
+
+  const outlineColorExpr = useMemo(() => ([
+    "case",
+    ["==", ["get", "id"], destinationId ?? "__none__"], DEST_COLOR,
+    ["==", ["get", "id"], selectedId ?? "__none__"], SELECTED_COLOR,
+    ["boolean", ["feature-state", "hover"], false], ROUTE_DARK,
+    ["coalesce", ["get", "accent"], "#94a3b8"],
+  ] as any), [destinationId, selectedId]);
+
+  const outlineWidthExpr = useMemo(() => ([
+    "case",
+    ["==", ["get", "id"], destinationId ?? "__none__"], 3.4,
+    ["==", ["get", "id"], selectedId ?? "__none__"], 3.2,
+    ["boolean", ["feature-state", "hover"], false], 2.4,
+    1.15,
+  ] as any), [destinationId, selectedId]);
 
   // ── Initialise the map once ────────────────────────────────────────────────
   useEffect(() => {
@@ -295,6 +352,13 @@ const BuildingMap = forwardRef<BuildingMapHandle, Props>(function BuildingMap(
       map.addLayer({
         id: "floor-fill", type: "fill", source: "floor",
         paint: { "fill-color": FLOOR_COLOR },
+      });
+      if (!map.hasImage("floor-tile")) {
+        map.addImage("floor-tile", makeFloorPatternImage(), { pixelRatio: 2 });
+      }
+      map.addLayer({
+        id: "floor-pattern", type: "fill", source: "floor",
+        paint: { "fill-pattern": "floor-tile", "fill-opacity": 0.2 },
       });
       map.addLayer({
         id: "floor-outline", type: "line", source: "floor",
@@ -343,6 +407,14 @@ const BuildingMap = forwardRef<BuildingMapHandle, Props>(function BuildingMap(
           // MapLibre supports vertical-gradient (top→bottom shading); AO is
           // Mapbox-only, so we fake grounding with the shadow fill above.
           "fill-extrusion-vertical-gradient": true,
+        },
+      });
+      map.addLayer({
+        id: "rooms-outline", type: "line", source: "rooms",
+        paint: {
+          "line-color": outlineColorExpr,
+          "line-width": outlineWidthExpr,
+          "line-opacity": 0.72,
         },
       });
 
@@ -512,7 +584,11 @@ const BuildingMap = forwardRef<BuildingMapHandle, Props>(function BuildingMap(
     const map = mapRef.current;
     if (!map || !readyRef.current || !map.getLayer("rooms-3d")) return;
     map.setPaintProperty("rooms-3d", "fill-extrusion-color", colorExpr);
-  }, [colorExpr, ready]);
+    if (map.getLayer("rooms-outline")) {
+      map.setPaintProperty("rooms-outline", "line-color", outlineColorExpr);
+      map.setPaintProperty("rooms-outline", "line-width", outlineWidthExpr);
+    }
+  }, [colorExpr, outlineColorExpr, outlineWidthExpr, ready]);
 
   // ── Markers: zone pills + amenity badges + logos + room labels ─────────────
   useEffect(() => {
@@ -584,7 +660,7 @@ const BuildingMap = forwardRef<BuildingMapHandle, Props>(function BuildingMap(
       }
 
       // Amenity → colored icon badge
-      const am = amenityBadge(s);
+      const am = categoryMarker(s);
       if (am) {
         const el = document.createElement("div");
         el.dataset.kind = "amenity";
