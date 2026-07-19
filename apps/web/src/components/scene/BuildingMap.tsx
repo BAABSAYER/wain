@@ -315,7 +315,7 @@ const BuildingMap = forwardRef<BuildingMapHandle, Props>(function BuildingMap(
     ["==", ["get", "id"], destinationId ?? "__none__"], 3.4,
     ["==", ["get", "id"], selectedId ?? "__none__"], 3.2,
     ["boolean", ["feature-state", "hover"], false], 2.4,
-    1.15,
+    0,
   ] as any), [destinationId, selectedId]);
 
   // ── Initialise the map once ────────────────────────────────────────────────
