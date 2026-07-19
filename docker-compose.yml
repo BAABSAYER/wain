@@ -94,10 +94,14 @@ services:
         NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL}
     image: wain-web:latest
     restart: unless-stopped
+    read_only: true
     pids_limit: 100
     cap_drop: ["ALL"]
     security_opt:
       - no-new-privileges:true
+    tmpfs:
+      - /tmp:size=64m,noexec,nosuid,nodev
+      - /app/apps/web/.next/cache:size=64m,noexec,nosuid,nodev
     environment:
       NODE_ENV: production
       PORT: "3000"
@@ -115,10 +119,14 @@ services:
         ADMIN_BASE_PATH: ${ADMIN_BASE_PATH:-/console}
     image: wain-admin:latest
     restart: unless-stopped
+    read_only: true
     pids_limit: 100
     cap_drop: ["ALL"]
     security_opt:
       - no-new-privileges:true
+    tmpfs:
+      - /tmp:size=64m,noexec,nosuid,nodev
+      - /app/apps/admin/.next/cache:size=64m,noexec,nosuid,nodev
     environment:
       NODE_ENV: production
       PORT: "3001"
