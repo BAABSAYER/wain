@@ -36,7 +36,7 @@ function amenityBadge(s: StoreData): { icon: string; bg: string } | null {
   }
 }
 
-const LANDMARK_CATEGORIES = new Set(["restroom", "restroom_male", "restroom_female", "elevator", "stairs", "escalator", "entrance", "parking", "dining", "door", "tree", "services"]);
+const LANDMARK_CATEGORIES = new Set(["restroom", "restroom_male", "restroom_female", "elevator", "stairs", "escalator", "entrance", "parking", "dining", "services"]);
 
 function categoryMarker(s: StoreData): { icon: string; bg: string } | null {
   if (!LANDMARK_CATEGORIES.has(s.category)) return null;
@@ -279,7 +279,7 @@ const BuildingMap = forwardRef<BuildingMapHandle, Props>(function BuildingMap(
   const areasFC = useMemo(() => ({
     type: "FeatureCollection" as const,
     features: stores
-      .filter((s) => isFlatMapArea(s.category) && !isBoundaryArea(s.category) && s.polygon.length >= 3)
+      .filter((s) => (isFlatMapArea(s.category) || isPointAsset(s.category)) && !isBoundaryArea(s.category) && s.polygon.length >= 3)
       .map((s) => {
         const ring = s.polygon.map((p) => toLngLat(p.x, p.y));
         ring.push(ring[0]);
@@ -702,12 +702,6 @@ const BuildingMap = forwardRef<BuildingMapHandle, Props>(function BuildingMap(
       x: s.polygon.reduce((a, p) => a + p.x, 0) / s.polygon.length,
       y: s.polygon.reduce((a, p) => a + p.y, 0) / s.polygon.length,
     });
-    const markerBearing = (s: StoreData) => {
-      if (s.polygon.length < 2) return 0;
-      const c = centroid(s);
-      const tip = s.polygon[0];
-      return (Math.atan2(tip.y - c.y, tip.x - c.x) * 180) / Math.PI + 90;
-    };
     const addMarker = (lngLat: [number, number], el: HTMLElement) => {
       labelMarkersRef.current.push(new maplibregl.Marker({ element: el }).setLngLat(lngLat).addTo(map));
     };
@@ -774,13 +768,6 @@ const BuildingMap = forwardRef<BuildingMapHandle, Props>(function BuildingMap(
         if (restroomIcon) {
           el.style.cssText = "pointer-events:none;transform:translate(-50%,-50%);display:flex;align-items:center;gap:3px;padding:3px;background:rgba(255,255,255,0.82);border-radius:6px;border:1px solid rgba(255,255,255,0.9);box-shadow:0 3px 8px rgba(15,23,42,0.22)";
           el.innerHTML = restroomIcon;
-        } else if (s.category === "door") {
-          el.style.cssText = "pointer-events:none;transform:translate(-50%,-50%);display:flex;align-items:center;justify-content:center;width:38px;height:38px";
-          el.innerHTML = `
-            <div style="position:relative;width:28px;height:34px;transform:rotate(${markerBearing(s)}deg);filter:drop-shadow(0 2px 3px rgba(15,23,42,0.28))">
-              <div style="position:absolute;left:5px;right:5px;bottom:0;height:20px;background:${am.bg};border-radius:2px"></div>
-              <div style="position:absolute;left:0;top:0;width:0;height:0;border-left:14px solid transparent;border-right:14px solid transparent;border-bottom:17px solid ${am.bg}"></div>
-            </div>`;
         } else {
           el.style.cssText = "pointer-events:none;transform:translate(-50%,-50%);display:flex;flex-direction:column;align-items:center;gap:2px";
           el.innerHTML = `
