@@ -5,7 +5,8 @@ import type { StoreCategory } from "@wain/types";
 
 const CATEGORIES: StoreCategory[] = [
   "retail","food","services","medical","education",
-  "transit","restroom","elevator","stairs","escalator","entrance","parking","other",
+  "transit","restroom","elevator","stairs","escalator","entrance","parking","dining",
+  "open_area","corridor","garden","building_border","door","tree","other",
 ];
 
 const NODE_TYPES = ["path", "entrance", "elevator", "stairs", "escalator", "qr"] as const;
@@ -102,7 +103,7 @@ export default function PropertiesPanel({ floors = [], currentFloorId }: Props) 
           <span className="text-xs text-slate-500 font-medium">Height (m)</span>
           <input
             type="number"
-            min={1} max={20}
+            min={0} max={20}
             className="bg-white border border-slate-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 rounded px-3 py-1.5 text-sm text-slate-900 outline-none"
             value={store.extrudeHeight}
             onChange={(e) => updateStore(store.id, { extrudeHeight: Number(e.target.value) })}

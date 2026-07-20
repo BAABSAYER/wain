@@ -185,11 +185,11 @@ export default function MapCanvas({
       pushSnapshot();
       addPresetStore({
         id: nanoid(),
-        name: "New Room",
+        name: preset.label,
         nameAr: "غرفة جديدة",
-        category: "other",
-        color: "#cbd5e1",
-        extrudeHeight: 5,
+        category: (preset.category ?? "other") as any,
+        color: preset.color ?? "#cbd5e1",
+        extrudeHeight: preset.extrudeHeight ?? 5,
         polygon: preset.build(pos),
       });
       // Keep the preset selected so the user can drop several in a row.

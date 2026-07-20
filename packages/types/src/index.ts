@@ -50,6 +50,13 @@ export type StoreCategory =
   | "escalator"
   | "entrance"
   | "parking"
+  | "dining"
+  | "open_area"
+  | "corridor"
+  | "garden"
+  | "building_border"
+  | "door"
+  | "tree"
   | "other";
 
 export interface Store {

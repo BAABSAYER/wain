@@ -9,6 +9,9 @@ export interface ShapePreset {
   id: string;
   label: string;
   icon: string;
+  category?: string;
+  extrudeHeight?: number;
+  color?: string;
   build(center: Point2D, halfSize?: number): Point2D[];
 }
 
@@ -87,6 +90,63 @@ export const SHAPE_PRESETS: ShapePreset[] = [
         return { x: c.x + Math.cos(theta) * s, y: c.y + Math.sin(theta) * s };
       });
     },
+  },
+  {
+    id: "door",
+    label: "Door",
+    icon: "DR",
+    category: "door",
+    extrudeHeight: 0,
+    color: "#0f766e",
+    build: (c, s = DEFAULT_HALF) => [
+      { x: c.x - s * 0.45, y: c.y - s * 0.12 },
+      { x: c.x + s * 0.45, y: c.y - s * 0.12 },
+      { x: c.x + s * 0.45, y: c.y + s * 0.12 },
+      { x: c.x - s * 0.45, y: c.y + s * 0.12 },
+    ],
+  },
+  {
+    id: "tree",
+    label: "Tree",
+    icon: "TR",
+    category: "tree",
+    extrudeHeight: 0,
+    color: "#16a34a",
+    build: (c, s = DEFAULT_HALF) => {
+      const sides = 16;
+      return Array.from({ length: sides }, (_, i) => {
+        const theta = (i / sides) * Math.PI * 2;
+        return { x: c.x + Math.cos(theta) * s * 0.35, y: c.y + Math.sin(theta) * s * 0.35 };
+      });
+    },
+  },
+  {
+    id: "building-border",
+    label: "Building Border",
+    icon: "BD",
+    category: "building_border",
+    extrudeHeight: 0,
+    color: "#334155",
+    build: (c, s = DEFAULT_HALF) => [
+      { x: c.x - s * 2, y: c.y - s * 1.3 },
+      { x: c.x + s * 2, y: c.y - s * 1.3 },
+      { x: c.x + s * 2, y: c.y + s * 1.3 },
+      { x: c.x - s * 2, y: c.y + s * 1.3 },
+    ],
+  },
+  {
+    id: "open-area",
+    label: "Open Area",
+    icon: "OA",
+    category: "open_area",
+    extrudeHeight: 0,
+    color: "#f8fafc",
+    build: (c, s = DEFAULT_HALF) => [
+      { x: c.x - s * 1.5, y: c.y - s },
+      { x: c.x + s * 1.5, y: c.y - s },
+      { x: c.x + s * 1.5, y: c.y + s },
+      { x: c.x - s * 1.5, y: c.y + s },
+    ],
   },
 ];
 

@@ -2,7 +2,7 @@
 import { useRef, useEffect, useState, useImperativeHandle, forwardRef, useMemo } from "react";
 import maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
-import { isOpenSpace, categoryGlyph, categoryVisual } from "@/lib/category-icons";
+import { isOpenSpace, isFlatMapArea, isBoundaryArea, isPointAsset, categoryGlyph, categoryVisual } from "@/lib/category-icons";
 
 // ─── Types (mirror BuildingScene so the page can swap engines freely) ─────────
 
@@ -36,7 +36,7 @@ function amenityBadge(s: StoreData): { icon: string; bg: string } | null {
   }
 }
 
-const LANDMARK_CATEGORIES = new Set(["restroom", "elevator", "stairs", "escalator", "entrance", "parking", "services"]);
+const LANDMARK_CATEGORIES = new Set(["restroom", "elevator", "stairs", "escalator", "entrance", "parking", "dining", "door", "tree", "services"]);
 
 function categoryMarker(s: StoreData): { icon: string; bg: string } | null {
   if (!LANDMARK_CATEGORIES.has(s.category)) return null;
@@ -110,8 +110,9 @@ function makeToLngLat(w: number, h: number) {
 }
 
 function heightMeters(s: StoreData): number {
-  // Exaggerate so blocks "pop" in the pitched view (LEAP-style chunky prisms).
-  return Math.max(5, (s.extrudeHeight || 5)) * 2.2;
+  if (isFlatMapArea(s.category) || isPointAsset(s.category)) return 0;
+  const h = Number.isFinite(s.extrudeHeight) ? s.extrudeHeight : 4;
+  return Math.max(0, h) * 2.2;
 }
 
 /** A small chevron arrow (pointing +x) for symbol layers. */
@@ -197,6 +198,7 @@ const BuildingMap = forwardRef<BuildingMapHandle, Props>(function BuildingMap(
   const youMarkerRef = useRef<maplibregl.Marker | null>(null);
   const labelMarkersRef = useRef<maplibregl.Marker[]>([]);
   const readyRef = useRef(false);
+  const lastRouteCameraKeyRef = useRef<string | null>(null);
   // `ready` STATE (not just the ref) so data/marker effects re-run once the map
   // finishes loading — refs don't trigger re-renders, which left labels unbuilt
   // until the first click changed a prop.
@@ -231,7 +233,7 @@ const BuildingMap = forwardRef<BuildingMapHandle, Props>(function BuildingMap(
   const roomsFC = useMemo(() => ({
     type: "FeatureCollection" as const,
     features: stores
-      .filter((s) => !isOpenSpace(s.category) && s.polygon.length >= 3)
+      .filter((s) => !isFlatMapArea(s.category) && !isPointAsset(s.category) && s.polygon.length >= 3)
       .map((s) => {
         const ring = s.polygon.map((p) => toLngLat(p.x, p.y));
         ring.push(ring[0]); // close
@@ -246,6 +248,46 @@ const BuildingMap = forwardRef<BuildingMapHandle, Props>(function BuildingMap(
             categoryFill: visual.fill,
             height: heightMeters(s),
           },
+          geometry: { type: "Polygon" as const, coordinates: [ring] },
+        };
+      }),
+  }), [stores, toLngLat]);
+
+  const areasFC = useMemo(() => ({
+    type: "FeatureCollection" as const,
+    features: stores
+      .filter((s) => isFlatMapArea(s.category) && !isBoundaryArea(s.category) && s.polygon.length >= 3)
+      .map((s) => {
+        const ring = s.polygon.map((p) => toLngLat(p.x, p.y));
+        ring.push(ring[0]);
+        const visual = categoryVisual(s.category);
+        return {
+          type: "Feature" as const,
+          id: s.id,
+          properties: {
+            id: s.id,
+            name: s.name,
+            nameAr: s.nameAr,
+            category: s.category,
+            fill: s.color || visual.fill,
+            accent: visual.accent,
+          },
+          geometry: { type: "Polygon" as const, coordinates: [ring] },
+        };
+      }),
+  }), [stores, toLngLat]);
+
+  const boundariesFC = useMemo(() => ({
+    type: "FeatureCollection" as const,
+    features: stores
+      .filter((s) => isBoundaryArea(s.category) && s.polygon.length >= 3)
+      .map((s) => {
+        const ring = s.polygon.map((p) => toLngLat(p.x, p.y));
+        ring.push(ring[0]);
+        return {
+          type: "Feature" as const,
+          id: s.id,
+          properties: { id: s.id, color: s.color || "#334155" },
           geometry: { type: "Polygon" as const, coordinates: [ring] },
         };
       }),
@@ -359,6 +401,25 @@ const BuildingMap = forwardRef<BuildingMapHandle, Props>(function BuildingMap(
       map.addLayer({
         id: "floor-pattern", type: "fill", source: "floor",
         paint: { "fill-pattern": "floor-tile", "fill-opacity": 0.2 },
+      });
+      map.addSource("areas", { type: "geojson", data: areasFC, promoteId: "id" });
+      map.addLayer({
+        id: "areas-fill", type: "fill", source: "areas",
+        paint: { "fill-color": ["coalesce", ["get", "fill"], "#f8fafc"], "fill-opacity": 0.52 },
+      });
+      map.addLayer({
+        id: "areas-outline", type: "line", source: "areas",
+        paint: { "line-color": ["coalesce", ["get", "accent"], "#94a3b8"], "line-width": 1.2, "line-opacity": 0.5 },
+      });
+      map.addSource("boundaries", { type: "geojson", data: boundariesFC, promoteId: "id" });
+      map.addLayer({
+        id: "building-boundary", type: "line", source: "boundaries",
+        paint: {
+          "line-color": ["coalesce", ["get", "color"], "#334155"],
+          "line-width": ["interpolate", ["linear"], ["zoom"], 16, 2, 20, 5],
+          "line-opacity": 0.9,
+          "line-dasharray": [2, 1],
+        },
       });
       map.addLayer({
         id: "floor-outline", type: "line", source: "floor",
@@ -579,6 +640,18 @@ const BuildingMap = forwardRef<BuildingMapHandle, Props>(function BuildingMap(
     (map.getSource("floor") as maplibregl.GeoJSONSource | undefined)?.setData(floorFC as any);
   }, [floorFC, ready]);
 
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !readyRef.current) return;
+    (map.getSource("areas") as maplibregl.GeoJSONSource | undefined)?.setData(areasFC as any);
+  }, [areasFC, ready]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !readyRef.current) return;
+    (map.getSource("boundaries") as maplibregl.GeoJSONSource | undefined)?.setData(boundariesFC as any);
+  }, [boundariesFC, ready]);
+
   // Recolor on selection/destination change
   useEffect(() => {
     const map = mapRef.current;
@@ -597,7 +670,11 @@ const BuildingMap = forwardRef<BuildingMapHandle, Props>(function BuildingMap(
     labelMarkersRef.current.forEach((m) => m.remove());
     labelMarkersRef.current = [];
 
-    const real = stores.filter((s) => !isOpenSpace(s.category) && s.polygon.length >= 3);
+    const real = stores.filter((s) =>
+      s.polygon.length >= 3 &&
+      !isBoundaryArea(s.category) &&
+      (!isOpenSpace(s.category) || LANDMARK_CATEGORIES.has(s.category)),
+    );
     const centroid = (s: StoreData) => ({
       x: s.polygon.reduce((a, p) => a + p.x, 0) / s.polygon.length,
       y: s.polygon.reduce((a, p) => a + p.y, 0) / s.polygon.length,
@@ -685,12 +762,13 @@ const BuildingMap = forwardRef<BuildingMapHandle, Props>(function BuildingMap(
     const applyLod = () => {
       const fz = fitZoomRef.current;
       const z = map.getZoom();
+      const routeActive = routeSteps.length >= 2;
       const showRooms = z >= fz + 0.8;   // default close view is fz+1.7 → rooms visible
       const showZones = z < fz + 1.3;    // zoomed out → zone pills carry the map
       for (const m of labelMarkersRef.current) {
         const el = m.getElement();
         const kind = el.dataset.kind;
-        if (kind === "room" || kind === "logo") el.style.display = showRooms ? "" : "none";
+        if (kind === "room" || kind === "logo") el.style.display = !routeActive && showRooms ? "" : "none";
         else if (kind === "zone") el.style.display = showZones ? "" : "none";
         // amenity + highlight always visible
       }
@@ -701,7 +779,7 @@ const BuildingMap = forwardRef<BuildingMapHandle, Props>(function BuildingMap(
     map.on("zoom", applyLod);
     map.on("moveend", applyLod);
     return () => { map.off("zoom", applyLod); map.off("moveend", applyLod); };
-  }, [stores, destinationId, selectedId, locale, toLngLat, ready]);
+  }, [stores, routeSteps.length, destinationId, selectedId, locale, toLngLat, ready]);
 
   // ── "You are here" marker (pulsing dot + heading wedge) ────────────────────
   useEffect(() => {
@@ -735,16 +813,34 @@ const BuildingMap = forwardRef<BuildingMapHandle, Props>(function BuildingMap(
     return b;
   }, [routeSteps, origin, toLngLat]);
 
-  // ── When a route appears, frame the whole path (LEAP-style) ────────────────
+  const routeCamera = useMemo(() => {
+    if (routeSteps.length < 2) return null;
+    const first = origin ?? routeSteps[0];
+    const last = routeSteps[routeSteps.length - 1];
+    return {
+      key: `${routeSteps[0].nodeId}:${last.nodeId}:${routeSteps.length}:${first.x}:${first.y}`,
+      center: toLngLat(first.x, first.y),
+    };
+  }, [routeSteps, origin, toLngLat]);
+
+  // ── When a route appears, start at the scan point in top view ──────────────
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || !readyRef.current || !routeBounds) return;
-    map.fitBounds(routeBounds, {
-      padding: { top: 170, bottom: 120, left: 70, right: 70 },
-      pitch: 50,
+    if (!routeCamera) {
+      lastRouteCameraKeyRef.current = null;
+      return;
+    }
+    if (!map || !readyRef.current) return;
+    if (lastRouteCameraKeyRef.current === routeCamera.key) return;
+    lastRouteCameraKeyRef.current = routeCamera.key;
+    map.easeTo({
+      center: routeCamera.center,
+      zoom: Math.max(map.getZoom(), fitZoomRef.current + 1.8),
+      pitch: 0,
+      bearing: 0,
       duration: 700,
     });
-  }, [routeBounds]);
+  }, [routeCamera]);
 
   // ── Focus follow (only when no route is active) ────────────────────────────
   useEffect(() => {
@@ -764,8 +860,8 @@ const BuildingMap = forwardRef<BuildingMapHandle, Props>(function BuildingMap(
     recenter: () => {
       const map = mapRef.current;
       if (!map) return;
-      if (routeBounds) {
-        map.fitBounds(routeBounds, { padding: { top: 170, bottom: 120, left: 70, right: 70 }, pitch: 50, duration: 600 });
+      if (routeCamera) {
+        map.easeTo({ center: routeCamera.center, zoom: fitZoomRef.current + 1.8, pitch: 0, bearing: 0, duration: 600 });
       } else if (focus) {
         map.easeTo({ center: toLngLat(focus.x, focus.y), zoom: fitZoomRef.current + 1.7, pitch: 50, duration: 600 });
       } else if (floorCamRef.current) {
@@ -778,7 +874,7 @@ const BuildingMap = forwardRef<BuildingMapHandle, Props>(function BuildingMap(
     topView: () => { mapRef.current?.easeTo({ pitch: 0, duration: 400 }); },
     zoomIn: () => { mapRef.current?.zoomIn({ duration: 250 }); },
     zoomOut: () => { mapRef.current?.zoomOut({ duration: 250 }); },
-  }), [floorBounds, routeBounds, focus, toLngLat]);
+  }), [floorBounds, routeCamera, focus, toLngLat]);
 
   return (
     <>

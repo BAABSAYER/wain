@@ -66,7 +66,6 @@ export interface BuildingSceneHandle {
 
 // ─── LEAP / invisual.app-style palette ──────────────────────────────────────
 // Cream "outside" + off-white floor + white extruded blocks with soft shadows.
-const ROOM_HEIGHT = 28;
 const DEFAULT_ROOM_COLOR = "#ffffff";      // all rooms are white by default
 const DESTINATION_COLOR = "#5b21b6";       // vivid LEAP-style purple
 const SELECTED_COLOR = "#ec4899";
@@ -127,6 +126,7 @@ function RoomBlock({
 }) {
   const meshRef = useRef<THREE.Mesh>(null!);
   const open = isOpenSpace(store.category);
+  const roomHeight = Math.max(0, Number.isFinite(store.extrudeHeight) ? store.extrudeHeight : 4) * 5.6;
 
   const { geometry, shadowGeom } = useMemo(() => {
     if (store.polygon.length < 3) return { geometry: null, shadowGeom: null };
@@ -138,12 +138,12 @@ function RoomBlock({
       shape.lineTo(p.x - w / 2, -(p.y - h / 2));
     }
     shape.closePath();
-    const geo = new THREE.ExtrudeGeometry(shape, { depth: ROOM_HEIGHT, bevelEnabled: false });
+    const geo = new THREE.ExtrudeGeometry(shape, { depth: roomHeight, bevelEnabled: false });
 
     // Fake drop-shadow: same polygon, flat, offset slightly south-east
     const sh = new THREE.ShapeGeometry(shape);
     return { geometry: geo, shadowGeom: sh };
-  }, [store.polygon, w, h]);
+  }, [store.polygon, roomHeight, w, h]);
 
   useFrame(({ clock }) => {
     if (isDestination && meshRef.current) {
@@ -153,7 +153,7 @@ function RoomBlock({
     }
   });
 
-  if (open || !geometry || !shadowGeom) return null;
+  if (open || roomHeight <= 0 || !geometry || !shadowGeom) return null;
 
   const color = isDestination ? DESTINATION_COLOR : isSelected ? SELECTED_COLOR : DEFAULT_ROOM_COLOR;
   const emissive = isDestination ? "#7c3aed" : isSelected ? "#f472b6" : "#000000";
@@ -199,6 +199,7 @@ function BlockOverlay({ store, w, h, isDestination, isSelected }: {
 }) {
   const [lod, setLod] = useState<"full" | "icon" | "hidden">("full");
   const open = isOpenSpace(store.category);
+  const labelHeight = Math.max(0, Number.isFinite(store.extrudeHeight) ? store.extrudeHeight : 4) * 5.6;
 
   // Watch the camera height to decide LOD visibility (no rotation needed — DOM
   // labels render in screen space and are always pixel-perfect).
@@ -212,7 +213,7 @@ function BlockOverlay({ store, w, h, isDestination, isSelected }: {
     if (next !== lod) setLod(next);
   });
 
-  if (store.polygon.length === 0 || open || lod === "hidden") return null;
+  if (store.polygon.length === 0 || open || labelHeight <= 0 || lod === "hidden") return null;
 
   const c = polygonCentroid(store.polygon);
   const [wx, , wz] = toWorld(c.x, c.y, w, h, 0);
@@ -233,7 +234,7 @@ function BlockOverlay({ store, w, h, isDestination, isSelected }: {
   // for destination which gets the purple pill so it's obvious.
   return (
     <Html
-      position={[wx, ROOM_HEIGHT + 0.5, wz]}
+      position={[wx, labelHeight + 0.5, wz]}
       center
       distanceFactor={distanceFactor}
       zIndexRange={[10, 0]}
