@@ -1,6 +1,7 @@
 "use client";
 import { useRef, useEffect, useState, useImperativeHandle, forwardRef, useMemo } from "react";
 import maplibregl from "maplibre-gl";
+import * as THREE from "three";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { isOpenSpace, isFlatMapArea, isBoundaryArea, isPointAsset, categoryGlyph, categoryVisual } from "@/lib/category-icons";
 
@@ -430,6 +431,217 @@ function assetHeight(asset: AssetData) {
   }
 }
 
+const tempAssetMaterials = new Map<string, THREE.MeshStandardMaterial>();
+
+function material(color: string, roughness = 0.72) {
+  const key = `${color}:${roughness}`;
+  const cached = tempAssetMaterials.get(key);
+  if (cached) return cached;
+  const next = new THREE.MeshStandardMaterial({ color, roughness, metalness: 0.08 });
+  tempAssetMaterials.set(key, next);
+  return next;
+}
+
+function addBox(group: THREE.Group, color: string, x: number, y: number, z: number, sx: number, sy: number, sz: number) {
+  const mesh = new THREE.Mesh(new THREE.BoxGeometry(sx, sy, sz), material(color));
+  mesh.position.set(x, y, z + sz / 2);
+  mesh.castShadow = true;
+  mesh.receiveShadow = true;
+  group.add(mesh);
+  return mesh;
+}
+
+function addCylinder(group: THREE.Group, color: string, x: number, y: number, z: number, radius: number, height: number, segments = 16) {
+  const mesh = new THREE.Mesh(new THREE.CylinderGeometry(radius, radius, height, segments), material(color));
+  mesh.rotation.x = Math.PI / 2;
+  mesh.position.set(x, y, z + height / 2);
+  mesh.castShadow = true;
+  mesh.receiveShadow = true;
+  group.add(mesh);
+  return mesh;
+}
+
+function addSphere(group: THREE.Group, color: string, x: number, y: number, z: number, radius: number) {
+  const mesh = new THREE.Mesh(new THREE.SphereGeometry(radius, 14, 10), material(color));
+  mesh.position.set(x, y, z + radius);
+  mesh.castShadow = true;
+  mesh.receiveShadow = true;
+  group.add(mesh);
+  return mesh;
+}
+
+function addCone(group: THREE.Group, color: string, x: number, y: number, z: number, radius: number, height: number) {
+  const mesh = new THREE.Mesh(new THREE.ConeGeometry(radius, height, 4), material(color));
+  mesh.rotation.z = Math.PI / 4;
+  mesh.position.set(x, y, z + height / 2);
+  mesh.castShadow = true;
+  mesh.receiveShadow = true;
+  group.add(mesh);
+  return mesh;
+}
+
+function createAssetObject(asset: AssetData) {
+  const group = new THREE.Group();
+  const c = asset.color || "#64748b";
+  const s = Math.max(0.35, Math.min(asset.scale ?? 1, 4)) * METERS_PER_UNIT * 34;
+  const steel = "#475569";
+  const light = "#e2e8f0";
+  const glass = "#bfdbfe";
+
+  switch (asset.type) {
+    case "tree":
+      addCylinder(group, "#8b5a2b", 0, 0, 0, s * 0.11, s * 0.75, 10);
+      addSphere(group, c, 0, 0, s * 0.56, s * 0.42);
+      addSphere(group, "#86efac", -s * 0.25, s * 0.12, s * 0.48, s * 0.28);
+      addSphere(group, "#15803d", s * 0.24, -s * 0.08, s * 0.44, s * 0.3);
+      break;
+    case "planter":
+      addBox(group, "#8b5a2b", 0, 0, 0, s * 1.15, s * 0.55, s * 0.22);
+      addSphere(group, c, -s * 0.28, 0, s * 0.15, s * 0.22);
+      addSphere(group, "#22c55e", s * 0.02, 0, s * 0.17, s * 0.24);
+      addSphere(group, "#15803d", s * 0.3, 0, s * 0.15, s * 0.2);
+      break;
+    case "door":
+      addBox(group, c, 0, 0, 0, s * 0.22, s * 0.75, s * 0.08);
+      addCone(group, c, 0, -s * 0.52, 0, s * 0.34, s * 0.12);
+      break;
+    case "stairs":
+      for (let i = 0; i < 5; i++) addBox(group, c, -s * 0.4 + i * s * 0.2, 0, i * s * 0.055, s * 0.32, s * 0.8, s * 0.09);
+      break;
+    case "escalator":
+      addBox(group, c, 0, 0, 0, s * 1.05, s * 0.22, s * 0.12).rotation.z = -0.35;
+      addCylinder(group, light, -s * 0.45, 0, s * 0.05, s * 0.13, s * 0.24, 14);
+      addCylinder(group, light, s * 0.45, 0, s * 0.05, s * 0.13, s * 0.24, 14);
+      break;
+    case "elevator":
+      addBox(group, light, 0, 0, 0, s * 0.58, s * 0.52, s * 0.9);
+      addBox(group, c, -s * 0.16, -s * 0.27, s * 0.04, s * 0.26, s * 0.04, s * 0.72);
+      addBox(group, c, s * 0.16, -s * 0.27, s * 0.04, s * 0.26, s * 0.04, s * 0.72);
+      addBox(group, "#0f172a", 0, -s * 0.31, s * 0.74, s * 0.26, s * 0.035, s * 0.1);
+      break;
+    case "reception":
+      addBox(group, c, 0, 0, 0, s * 1.1, s * 0.38, s * 0.35);
+      addBox(group, light, 0, -s * 0.16, s * 0.28, s * 0.42, s * 0.1, s * 0.28);
+      addBox(group, glass, 0, -s * 0.23, s * 0.42, s * 0.32, s * 0.04, s * 0.18);
+      break;
+    case "info":
+      addCylinder(group, c, 0, 0, 0, s * 0.08, s * 0.72, 12);
+      addBox(group, light, 0, -s * 0.05, s * 0.62, s * 0.48, s * 0.12, s * 0.34);
+      addCylinder(group, steel, 0, 0, 0, s * 0.34, s * 0.06, 18);
+      break;
+    case "security":
+      addBox(group, c, 0, 0, 0, s * 0.72, s * 0.62, s * 0.58);
+      addBox(group, glass, 0, -s * 0.32, s * 0.36, s * 0.44, s * 0.04, s * 0.22);
+      addBox(group, steel, 0, 0, s * 0.58, s * 0.82, s * 0.72, s * 0.08);
+      break;
+    case "parking":
+      addCylinder(group, steel, 0, 0, 0, s * 0.05, s * 0.7, 10);
+      addBox(group, c, 0, -s * 0.05, s * 0.65, s * 0.56, s * 0.1, s * 0.4);
+      addBox(group, "#ffffff", 0, -s * 0.11, s * 0.76, s * 0.24, s * 0.025, s * 0.2);
+      break;
+    case "dining":
+      addCylinder(group, c, 0, 0, s * 0.2, s * 0.36, s * 0.08, 18);
+      addCylinder(group, steel, 0, 0, 0, s * 0.06, s * 0.28, 10);
+      addBox(group, steel, -s * 0.58, 0, 0, s * 0.18, s * 0.26, s * 0.28);
+      addBox(group, steel, s * 0.58, 0, 0, s * 0.18, s * 0.26, s * 0.28);
+      break;
+    case "bench":
+      addBox(group, c, 0, 0, s * 0.24, s * 1.15, s * 0.12, s * 0.1);
+      addBox(group, c, 0, -s * 0.22, s * 0.44, s * 1.15, s * 0.1, s * 0.12);
+      addBox(group, steel, -s * 0.42, 0, 0, s * 0.07, s * 0.12, s * 0.26);
+      addBox(group, steel, s * 0.42, 0, 0, s * 0.07, s * 0.12, s * 0.26);
+      break;
+    case "barrier":
+      addBox(group, c, 0, 0, s * 0.36, s * 1.2, s * 0.1, s * 0.1);
+      addBox(group, steel, -s * 0.48, 0, 0, s * 0.08, s * 0.08, s * 0.5);
+      addBox(group, steel, s * 0.48, 0, 0, s * 0.08, s * 0.08, s * 0.5);
+      break;
+    case "kiosk":
+    case "atm":
+      addBox(group, c, 0, 0, 0, s * 0.46, s * 0.36, s * 0.82);
+      addBox(group, glass, 0, -s * 0.2, s * 0.52, s * 0.3, s * 0.035, s * 0.18);
+      addBox(group, "#0f172a", 0, -s * 0.22, s * 0.34, s * 0.28, s * 0.035, s * 0.05);
+      break;
+    case "sign":
+      addCylinder(group, steel, 0, 0, 0, s * 0.045, s * 0.72, 10);
+      addBox(group, c, 0, -s * 0.06, s * 0.65, s * 0.72, s * 0.08, s * 0.28);
+      break;
+    default:
+      addBox(group, c, 0, 0, 0, s * 0.55, s * 0.48, s * 0.45);
+  }
+
+  group.rotation.z = -((asset.rotation ?? 0) * Math.PI) / 180;
+  return group;
+}
+
+function createThreeAssetLayer(
+  getAssets: () => AssetData[],
+  getToLngLat: () => (x: number, y: number) => [number, number],
+): maplibregl.CustomLayerInterface & { rebuild: () => void } {
+  let map: maplibregl.Map | null = null;
+  let scene: THREE.Scene | null = null;
+  let camera: THREE.Camera | null = null;
+  let renderer: THREE.WebGLRenderer | null = null;
+  let root: THREE.Group | null = null;
+
+  const rebuild = () => {
+    if (!scene || !root) return;
+    root.clear();
+    const toLngLatLocal = getToLngLat();
+    for (const asset of getAssets()) {
+      const lngLat = toLngLatLocal(asset.x, asset.y);
+      const coord = maplibregl.MercatorCoordinate.fromLngLat({ lng: lngLat[0], lat: lngLat[1] }, 0);
+      const scale = coord.meterInMercatorCoordinateUnits();
+      const object = createAssetObject(asset);
+      object.position.set(coord.x, coord.y, coord.z);
+      object.scale.set(scale, scale, scale);
+      root.add(object);
+    }
+    map?.triggerRepaint();
+  };
+
+  return {
+    id: "three-assets",
+    type: "custom",
+    renderingMode: "3d",
+    rebuild,
+    onAdd(nextMap, gl) {
+      map = nextMap;
+      scene = new THREE.Scene();
+      camera = new THREE.Camera();
+      root = new THREE.Group();
+      scene.add(root);
+      scene.add(new THREE.AmbientLight(0xffffff, 1.15));
+      const sun = new THREE.DirectionalLight(0xffffff, 1.8);
+      sun.position.set(0.5, -1, 1.8);
+      scene.add(sun);
+      renderer = new THREE.WebGLRenderer({
+        canvas: nextMap.getCanvas(),
+        context: gl as WebGLRenderingContext,
+        antialias: true,
+      });
+      renderer.autoClear = false;
+      rebuild();
+    },
+    render(_gl, options) {
+      if (!renderer || !scene || !camera) return;
+      const modelViewProjectionMatrix = options.modelViewProjectionMatrix;
+      if (!modelViewProjectionMatrix) return;
+      camera.projectionMatrix = new THREE.Matrix4().fromArray(modelViewProjectionMatrix);
+      renderer.resetState();
+      renderer.render(scene, camera);
+    },
+    onRemove() {
+      root?.clear();
+      scene = null;
+      camera = null;
+      renderer = null;
+      root = null;
+      map = null;
+    },
+  };
+}
+
 const BuildingMap = forwardRef<BuildingMapHandle, Props>(function BuildingMap(
   { stores, assets = [], routeSteps, destinationId, selectedId, highlightCategory = null, floorWidth, floorHeight,
     origin, focus, heading, initialAzimuth, locale = "en", navEdges = [], onProjection, onBlockClick },
@@ -439,6 +651,9 @@ const BuildingMap = forwardRef<BuildingMapHandle, Props>(function BuildingMap(
   const mapRef = useRef<maplibregl.Map | null>(null);
   const youMarkerRef = useRef<maplibregl.Marker | null>(null);
   const labelMarkersRef = useRef<maplibregl.Marker[]>([]);
+  const assetsRef = useRef<AssetData[]>(assets);
+  const toLngLatRef = useRef<(x: number, y: number) => [number, number]>(() => [0, 0]);
+  const threeAssetLayerRef = useRef<(maplibregl.CustomLayerInterface & { rebuild: () => void }) | null>(null);
   const readyRef = useRef(false);
   const lastRouteCameraKeyRef = useRef<string | null>(null);
   // `ready` STATE (not just the ref) so data/marker effects re-run once the map
@@ -453,6 +668,8 @@ const BuildingMap = forwardRef<BuildingMapHandle, Props>(function BuildingMap(
   originRef.current = origin;
 
   const toLngLat = useMemo(() => makeToLngLat(floorWidth, floorHeight), [floorWidth, floorHeight]);
+  assetsRef.current = assets;
+  toLngLatRef.current = toLngLat;
 
   // Keep latest callbacks/data in refs so the map's persistent listeners stay current
   const onProjectionRef = useRef(onProjection);
@@ -534,25 +751,6 @@ const BuildingMap = forwardRef<BuildingMapHandle, Props>(function BuildingMap(
         };
       }),
   }), [stores, toLngLat]);
-
-  const assetsFC = useMemo(() => ({
-    type: "FeatureCollection" as const,
-    features: assets.map((asset) => {
-      const ring = assetFootprint(asset).map((p) => toLngLat(p.x, p.y));
-      if (ring.length > 0) ring.push(ring[0]);
-      return {
-        type: "Feature" as const,
-        id: asset.id,
-        properties: {
-          id: asset.id,
-          type: asset.type,
-          color: asset.color || "#64748b",
-          height: assetHeight(asset),
-        },
-        geometry: { type: "Polygon" as const, coordinates: [ring] },
-      };
-    }),
-  }), [assets, toLngLat]);
 
   const routeFC = useMemo(() => ({
     type: "FeatureCollection" as const,
@@ -740,34 +938,12 @@ const BuildingMap = forwardRef<BuildingMapHandle, Props>(function BuildingMap(
         },
       });
 
-      map.addSource("assets", { type: "geojson", data: assetsFC, promoteId: "id" });
-      map.addLayer({
-        id: "assets-shadow", type: "fill", source: "assets",
-        paint: {
-          "fill-color": "#756d5f",
-          "fill-opacity": ["interpolate", ["linear"], ["zoom"], 16, 0.06, 19, 0.18],
-          "fill-translate": [5, 6],
-          "fill-translate-anchor": "map",
-        },
-      });
-      map.addLayer({
-        id: "assets-3d", type: "fill-extrusion", source: "assets",
-        paint: {
-          "fill-extrusion-color": ["coalesce", ["get", "color"], "#64748b"],
-          "fill-extrusion-height": ["get", "height"],
-          "fill-extrusion-base": 0,
-          "fill-extrusion-opacity": ["interpolate", ["linear"], ["zoom"], 16, 0.35, 18, 0.78, 20, 1],
-          "fill-extrusion-vertical-gradient": true,
-        },
-      });
-      map.addLayer({
-        id: "assets-outline", type: "line", source: "assets",
-        paint: {
-          "line-color": "#ffffff",
-          "line-width": ["interpolate", ["linear"], ["zoom"], 16, 0.4, 20, 1.6],
-          "line-opacity": ["interpolate", ["linear"], ["zoom"], 16, 0.15, 19, 0.75],
-        },
-      });
+      const assetLayer = createThreeAssetLayer(
+        () => assetsRef.current,
+        () => toLngLatRef.current,
+      );
+      threeAssetLayerRef.current = assetLayer;
+      map.addLayer(assetLayer);
 
       // Route ribbon: a thick rounded bright-blue band with a darker edge and
       // large white chevrons inside it (LEAP-style). Widths interpolate with
@@ -890,6 +1066,7 @@ const BuildingMap = forwardRef<BuildingMapHandle, Props>(function BuildingMap(
 
     return () => {
       readyRef.current = false;
+      threeAssetLayerRef.current = null;
       mapRef.current = null;
       try { map.stop(); } catch { /* noop */ }
       try { map.remove(); } catch { /* noop */ }
@@ -943,10 +1120,9 @@ const BuildingMap = forwardRef<BuildingMapHandle, Props>(function BuildingMap(
   }, [boundariesFC, ready]);
 
   useEffect(() => {
-    const map = mapRef.current;
-    if (!map || !readyRef.current) return;
-    (map.getSource("assets") as maplibregl.GeoJSONSource | undefined)?.setData(assetsFC as any);
-  }, [assetsFC, ready]);
+    if (!readyRef.current) return;
+    threeAssetLayerRef.current?.rebuild();
+  }, [assets, toLngLat, ready]);
 
   // Recolor on selection/destination change
   useEffect(() => {
