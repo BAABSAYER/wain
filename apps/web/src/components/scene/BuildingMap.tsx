@@ -267,18 +267,62 @@ function assetModelHtml(asset: AssetData, color: string, scale: number) {
         <div style="position:absolute;left:8px;bottom:0;width:5px;height:22px;background:#334155"></div><div style="position:absolute;right:10px;bottom:0;width:5px;height:22px;background:#334155"></div>
       </div>`;
     case "elevator":
+      return `<div style="${common};position:relative;width:46px;height:54px">
+        <div style="position:absolute;left:7px;bottom:0;width:30px;height:46px;background:linear-gradient(90deg,#e2e8f0 0 47%,#94a3b8 47% 53%,#cbd5e1 53%);border:2px solid ${color};border-radius:4px 4px 1px 1px;box-shadow:9px -6px 0 rgba(15,23,42,0.2)"></div>
+        <div style="position:absolute;left:13px;bottom:31px;width:7px;height:7px;border-left:5px solid transparent;border-right:5px solid transparent;border-bottom:8px solid ${color}"></div>
+        <div style="position:absolute;left:24px;bottom:31px;width:7px;height:7px;border-left:5px solid transparent;border-right:5px solid transparent;border-top:8px solid ${color}"></div>
+      </div>`;
     case "reception":
+      return `<div style="${common};position:relative;width:62px;height:42px">
+        <div style="position:absolute;left:8px;bottom:0;width:44px;height:22px;background:${color};border-radius:5px 5px 2px 2px;box-shadow:9px -6px 0 rgba(15,23,42,0.2),inset 0 8px 0 rgba(255,255,255,0.22)"></div>
+        <div style="position:absolute;left:18px;bottom:18px;width:24px;height:15px;background:#f8fafc;border:2px solid ${color};border-radius:3px;box-shadow:5px -3px 0 rgba(15,23,42,0.14)"></div>
+      </div>`;
     case "info":
+      return `<div style="${common};position:relative;width:42px;height:58px">
+        <div style="position:absolute;left:17px;bottom:0;width:8px;height:36px;background:${color};box-shadow:5px -3px 0 rgba(15,23,42,0.2)"></div>
+        <div style="position:absolute;left:8px;bottom:31px;width:26px;height:20px;background:#f8fafc;border:3px solid ${color};border-radius:5px;box-shadow:6px -4px 0 rgba(15,23,42,0.18)"></div>
+        <div style="position:absolute;left:5px;bottom:0;width:32px;height:6px;background:#64748b;border-radius:999px"></div>
+      </div>`;
     case "security":
+      return `<div style="${common};position:relative;width:54px;height:56px">
+        <div style="position:absolute;left:9px;bottom:0;width:34px;height:36px;background:${color};clip-path:polygon(10% 0,90% 0,100% 100%,0 100%);box-shadow:8px -5px 0 rgba(15,23,42,0.2)"></div>
+        <div style="position:absolute;left:15px;bottom:25px;width:22px;height:18px;background:#dbeafe;border-radius:3px;border:2px solid #e2e8f0"></div>
+        <div style="position:absolute;left:20px;bottom:41px;width:12px;height:10px;background:#334155;border-radius:8px 8px 2px 2px"></div>
+      </div>`;
     case "parking":
+      return `<div style="${common};position:relative;width:48px;height:58px">
+        <div style="position:absolute;left:20px;bottom:0;width:7px;height:38px;background:#475569"></div>
+        <div style="position:absolute;left:7px;bottom:31px;width:34px;height:24px;background:${color};border-radius:5px;box-shadow:7px -4px 0 rgba(15,23,42,0.18)"></div>
+        <div style="position:absolute;left:15px;bottom:38px;width:18px;height:10px;border-radius:6px 6px 2px 2px;background:#eff6ff;box-shadow:0 8px 0 #eff6ff"></div>
+      </div>`;
     case "dining":
+      return `<div style="${common};position:relative;width:60px;height:42px">
+        <div style="position:absolute;left:18px;bottom:12px;width:24px;height:18px;background:${color};border-radius:50%;box-shadow:6px -4px 0 rgba(15,23,42,0.18)"></div>
+        <div style="position:absolute;left:8px;bottom:9px;width:9px;height:16px;background:#94a3b8;border-radius:6px 6px 2px 2px"></div>
+        <div style="position:absolute;right:8px;bottom:9px;width:9px;height:16px;background:#94a3b8;border-radius:6px 6px 2px 2px"></div>
+        <div style="position:absolute;left:27px;bottom:0;width:5px;height:14px;background:#475569"></div>
+      </div>`;
     case "kiosk":
+      return `<div style="${common};position:relative;width:48px;height:58px">
+        <div style="position:absolute;left:10px;bottom:0;width:28px;height:42px;background:${color};border-radius:5px;box-shadow:8px -6px 0 rgba(15,23,42,0.22)"></div>
+        <div style="position:absolute;left:15px;bottom:23px;width:18px;height:13px;background:#e0f2fe;border-radius:2px"></div>
+        <div style="position:absolute;left:13px;bottom:8px;width:22px;height:6px;background:rgba(255,255,255,0.45);border-radius:999px"></div>
+      </div>`;
     case "atm":
+      return `<div style="${common};position:relative;width:48px;height:58px">
+        <div style="position:absolute;left:9px;bottom:0;width:30px;height:44px;background:${color};border-radius:5px;box-shadow:8px -6px 0 rgba(15,23,42,0.22)"></div>
+        <div style="position:absolute;left:14px;bottom:27px;width:20px;height:11px;background:#dbeafe;border-radius:2px"></div>
+        <div style="position:absolute;left:15px;bottom:19px;width:18px;height:3px;background:#0f172a;border-radius:999px"></div>
+        <div style="position:absolute;left:18px;bottom:8px;width:12px;height:8px;background:rgba(255,255,255,0.35);border-radius:2px"></div>
+      </div>`;
     case "sign":
+      return `<div style="${common};position:relative;width:52px;height:58px">
+        <div style="position:absolute;left:23px;bottom:0;width:6px;height:34px;background:#475569"></div>
+        <div style="position:absolute;left:6px;bottom:30px;width:40px;height:18px;background:${color};clip-path:polygon(0 0,82% 0,100% 50%,82% 100%,0 100%);box-shadow:6px -4px 0 rgba(15,23,42,0.2)"></div>
+      </div>`;
     default:
-      return `<div style="${common};position:relative;width:42px;height:44px">
-        <div style="position:absolute;left:6px;bottom:0;width:28px;height:34px;background:${color};border-radius:4px;box-shadow:9px -6px 0 rgba(15,23,42,0.25),inset 0 1px 0 rgba(255,255,255,0.35)"></div>
-        <div style="position:absolute;left:11px;bottom:9px;width:18px;height:16px;background:rgba(255,255,255,0.28);border-radius:2px"></div>
+      return `<div style="${common};position:relative;width:44px;height:46px">
+        <div style="position:absolute;left:6px;bottom:0;width:30px;height:34px;background:${color};clip-path:polygon(18% 0,100% 10%,84% 100%,0 88%);box-shadow:8px -6px 0 rgba(15,23,42,0.22),inset 0 1px 0 rgba(255,255,255,0.35)"></div>
       </div>`;
   }
 }

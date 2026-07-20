@@ -754,12 +754,20 @@ export default function MapCanvas({
                 onMouseEnter={() => tool === "select" && setCursor("move")}
                 onMouseLeave={() => tool === "select" && setCursor("crosshair")}
               >
-                {asset.type === "tree" || asset.type === "planter" ? (
+                {asset.type === "tree" ? (
                   <>
-                    <Circle x={0} y={0} radius={size * 0.42} fill={color} stroke={isSel ? "#2563eb" : "#ffffff"} strokeWidth={isSel ? 3 : 1.5} />
-                    <Rect x={-size * 0.08} y={size * 0.1} width={size * 0.16} height={size * 0.42} fill="#92400e" cornerRadius={2} />
+                    <Rect x={-size * 0.07} y={size * 0.06} width={size * 0.14} height={size * 0.48} fill="#92400e" cornerRadius={2} />
+                    <Circle x={-size * 0.08} y={-size * 0.08} radius={size * 0.34} fill={color} stroke={isSel ? "#2563eb" : "#ffffff"} strokeWidth={isSel ? 3 : 1.5} />
+                    <Circle x={size * 0.16} y={size * 0.04} radius={size * 0.26} fill="#86efac" opacity={0.9} />
                   </>
-                ) : asset.type === "door" || asset.type === "sign" ? (
+                ) : asset.type === "planter" ? (
+                  <>
+                    <Rect x={-size * 0.48} y={-size * 0.08} width={size * 0.96} height={size * 0.36} fill="#a16207" stroke={isSel ? "#2563eb" : "#ffffff"} strokeWidth={isSel ? 3 : 1.5} cornerRadius={4} />
+                    <Circle x={-size * 0.18} y={-size * 0.18} radius={size * 0.22} fill={color} />
+                    <Circle x={size * 0.08} y={-size * 0.2} radius={size * 0.24} fill="#22c55e" />
+                    <Circle x={size * 0.26} y={-size * 0.12} radius={size * 0.18} fill="#15803d" />
+                  </>
+                ) : asset.type === "door" ? (
                   <Line
                     points={[0, -size * 0.55, size * 0.42, -size * 0.08, size * 0.16, -size * 0.08, size * 0.16, size * 0.55, -size * 0.16, size * 0.55, -size * 0.16, -size * 0.08, -size * 0.42, -size * 0.08]}
                     closed
@@ -767,8 +775,81 @@ export default function MapCanvas({
                     stroke={isSel ? "#2563eb" : "#ffffff"}
                     strokeWidth={isSel ? 3 : 1.5}
                   />
+                ) : asset.type === "sign" ? (
+                  <>
+                    <Rect x={-size * 0.06} y={-size * 0.12} width={size * 0.12} height={size * 0.64} fill="#475569" />
+                    <Line points={[-size * 0.5, -size * 0.38, size * 0.28, -size * 0.38, size * 0.5, -size * 0.18, size * 0.28, size * 0.02, -size * 0.5, size * 0.02]} closed fill={color} stroke={isSel ? "#2563eb" : "#ffffff"} strokeWidth={isSel ? 3 : 1.5} />
+                  </>
+                ) : asset.type === "stairs" ? (
+                  <>
+                    {[0, 1, 2, 3].map((i) => (
+                      <Rect key={i} x={-size * 0.5 + i * size * 0.18} y={size * 0.22 - i * size * 0.16} width={size * 0.56} height={size * 0.14} fill={color} stroke={isSel && i === 0 ? "#2563eb" : "#ffffff"} strokeWidth={isSel && i === 0 ? 3 : 1} cornerRadius={1} />
+                    ))}
+                  </>
+                ) : asset.type === "escalator" ? (
+                  <>
+                    <Line points={[-size * 0.52, size * 0.24, size * 0.48, -size * 0.26]} stroke={color} strokeWidth={size * 0.22} lineCap="round" />
+                    <Line points={[-size * 0.4, size * 0.08, size * 0.38, -size * 0.32]} stroke="#e2e8f0" strokeWidth={size * 0.06} lineCap="round" />
+                    {isSel && <Circle x={0} y={0} radius={size * 0.58} stroke="#2563eb" strokeWidth={2} dash={[4, 3]} />}
+                  </>
+                ) : asset.type === "elevator" ? (
+                  <>
+                    <Rect x={-size * 0.38} y={-size * 0.52} width={size * 0.76} height={size * 1.04} fill="#e2e8f0" stroke={isSel ? "#2563eb" : color} strokeWidth={isSel ? 3 : 2} cornerRadius={3} />
+                    <Line points={[0, -size * 0.48, 0, size * 0.48]} stroke="#94a3b8" strokeWidth={2} />
+                    <Line points={[-size * 0.2, -size * 0.18, -size * 0.04, -size * 0.36, size * 0.12, -size * 0.18]} closed fill={color} />
+                    <Line points={[-size * 0.2, size * 0.18, -size * 0.04, size * 0.36, size * 0.12, size * 0.18]} closed fill={color} />
+                  </>
+                ) : asset.type === "reception" ? (
+                  <>
+                    <Rect x={-size * 0.55} y={-size * 0.1} width={size * 1.1} height={size * 0.45} fill={color} stroke={isSel ? "#2563eb" : "#ffffff"} strokeWidth={isSel ? 3 : 1.5} cornerRadius={5} />
+                    <Rect x={-size * 0.25} y={-size * 0.42} width={size * 0.5} height={size * 0.28} fill="#f8fafc" stroke={color} strokeWidth={2} cornerRadius={2} />
+                  </>
+                ) : asset.type === "info" ? (
+                  <>
+                    <Rect x={-size * 0.08} y={-size * 0.05} width={size * 0.16} height={size * 0.58} fill={color} />
+                    <Rect x={-size * 0.34} y={-size * 0.48} width={size * 0.68} height={size * 0.38} fill="#f8fafc" stroke={isSel ? "#2563eb" : color} strokeWidth={isSel ? 3 : 2} cornerRadius={5} />
+                    <Rect x={-size * 0.38} y={size * 0.5} width={size * 0.76} height={size * 0.1} fill="#64748b" cornerRadius={4} />
+                  </>
+                ) : asset.type === "security" ? (
+                  <>
+                    <Line points={[-size * 0.42, -size * 0.35, size * 0.42, -size * 0.35, size * 0.5, size * 0.42, -size * 0.5, size * 0.42]} closed fill={color} stroke={isSel ? "#2563eb" : "#ffffff"} strokeWidth={isSel ? 3 : 1.5} />
+                    <Rect x={-size * 0.22} y={-size * 0.22} width={size * 0.44} height={size * 0.28} fill="#dbeafe" cornerRadius={2} />
+                    <Rect x={-size * 0.14} y={-size * 0.48} width={size * 0.28} height={size * 0.16} fill="#334155" cornerRadius={5} />
+                  </>
+                ) : asset.type === "parking" ? (
+                  <>
+                    <Rect x={-size * 0.08} y={-size * 0.02} width={size * 0.16} height={size * 0.6} fill="#475569" />
+                    <Rect x={-size * 0.42} y={-size * 0.5} width={size * 0.84} height={size * 0.42} fill={color} stroke={isSel ? "#2563eb" : "#ffffff"} strokeWidth={isSel ? 3 : 1.5} cornerRadius={4} />
+                    <Rect x={-size * 0.22} y={-size * 0.38} width={size * 0.44} height={size * 0.18} fill="#eff6ff" cornerRadius={6} />
+                  </>
+                ) : asset.type === "dining" ? (
+                  <>
+                    <Circle x={0} y={0} radius={size * 0.3} fill={color} stroke={isSel ? "#2563eb" : "#ffffff"} strokeWidth={isSel ? 3 : 1.5} />
+                    <Rect x={-size * 0.6} y={-size * 0.14} width={size * 0.18} height={size * 0.32} fill="#94a3b8" cornerRadius={4} />
+                    <Rect x={size * 0.42} y={-size * 0.14} width={size * 0.18} height={size * 0.32} fill="#94a3b8" cornerRadius={4} />
+                  </>
+                ) : asset.type === "bench" ? (
+                  <>
+                    <Rect x={-size * 0.58} y={-size * 0.22} width={size * 1.16} height={size * 0.18} fill={color} stroke={isSel ? "#2563eb" : "#ffffff"} strokeWidth={isSel ? 3 : 1.5} cornerRadius={2} />
+                    <Rect x={-size * 0.48} y={size * 0.04} width={size * 0.96} height={size * 0.18} fill={color} cornerRadius={2} />
+                    <Rect x={-size * 0.36} y={size * 0.18} width={size * 0.08} height={size * 0.2} fill="#475569" />
+                    <Rect x={size * 0.28} y={size * 0.18} width={size * 0.08} height={size * 0.2} fill="#475569" />
+                  </>
+                ) : asset.type === "barrier" ? (
+                  <>
+                    <Line points={[-size * 0.58, 0, size * 0.58, -size * 0.2]} stroke={color} strokeWidth={size * 0.16} lineCap="round" />
+                    <Rect x={-size * 0.48} y={-size * 0.12} width={size * 0.08} height={size * 0.5} fill="#334155" />
+                    <Rect x={size * 0.4} y={-size * 0.22} width={size * 0.08} height={size * 0.5} fill="#334155" />
+                    {isSel && <Circle x={0} y={0} radius={size * 0.62} stroke="#2563eb" strokeWidth={2} dash={[4, 3]} />}
+                  </>
+                ) : asset.type === "kiosk" || asset.type === "atm" ? (
+                  <>
+                    <Rect x={-size * 0.34} y={-size * 0.52} width={size * 0.68} height={size * 1.04} fill={color} stroke={isSel ? "#2563eb" : "#ffffff"} strokeWidth={isSel ? 3 : 1.5} cornerRadius={5} />
+                    <Rect x={-size * 0.22} y={-size * 0.32} width={size * 0.44} height={size * 0.24} fill="#dbeafe" cornerRadius={2} />
+                    <Rect x={-size * 0.18} y={size * 0.02} width={size * 0.36} height={size * 0.08} fill="#0f172a" cornerRadius={2} />
+                  </>
                 ) : (
-                  <Rect x={-size * 0.5} y={-size * 0.35} width={size} height={size * 0.7} fill={color} stroke={isSel ? "#2563eb" : "#ffffff"} strokeWidth={isSel ? 3 : 1.5} cornerRadius={4} />
+                  <Line points={[-size * 0.42, -size * 0.35, size * 0.48, -size * 0.24, size * 0.34, size * 0.4, -size * 0.48, size * 0.28]} closed fill={color} stroke={isSel ? "#2563eb" : "#ffffff"} strokeWidth={isSel ? 3 : 1.5} />
                 )}
               </Group>
             );
