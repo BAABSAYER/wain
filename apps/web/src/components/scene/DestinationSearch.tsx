@@ -39,7 +39,7 @@ const CATEGORIES: Array<{
 
 const CATEGORY_GLYPH: Record<string, string> = {
   medical: "⚕", services: "ⓘ", retail: "℞", food: "☕",
-  restroom: "WC", elevator: "▦", stairs: "↗", escalator: "⇅",
+  restroom: "WC", restroom_male: "M", restroom_female: "F", elevator: "▦", stairs: "↗", escalator: "⇅",
   entrance: "⌂", parking: "🅿", education: "🎓", other: "•",
 };
 

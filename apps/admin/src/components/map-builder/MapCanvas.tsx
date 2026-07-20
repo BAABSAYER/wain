@@ -478,28 +478,25 @@ export default function MapCanvas({
     tr.getLayer()?.batchDraw();
   }, [selectedId, selectedKind, extraSelectedIds, stores]);
 
-  // Convert the Line's transient scale/translation back into polygon points.
-  // We let Konva animate scaleX/scaleY/x/y during the drag (live preview),
-  // then on drag end bake the result into store.polygon and reset the node
-  // so the next transform starts from identity.
+  // Convert the Line's transient scale/rotation/translation back into polygon
+  // points. The DB stores final polygon vertices, so rotation is baked into the
+  // geometry instead of saved as a separate field.
   const handleStoreTransformEnd = useCallback((storeId: string, e: any) => {
     const node = e.target;
-    const scaleX = node.scaleX();
-    const scaleY = node.scaleY();
-    const dx = node.x();
-    const dy = node.y();
+    const transform = node.getTransform().copy();
     node.scaleX(1);
     node.scaleY(1);
+    node.rotation(0);
     node.x(0);
     node.y(0);
     const store = stores.find((s) => s.id === storeId);
     if (!store) return;
-    const next = store.polygon.map((p) => ({
-      x: dx + p.x * scaleX,
-      y: dy + p.y * scaleY,
-    }));
+    const next = store.polygon.map((p) => {
+      const transformed = transform.point(p);
+      return { x: snap(transformed.x), y: snap(transformed.y) };
+    });
     updateStore(storeId, { polygon: next });
-  }, [stores, updateStore]);
+  }, [stores, updateStore, snap]);
 
   // ── Vertex drag handlers ────────────────────────────────────────────────
   const handleVertexDrag = useCallback((storeId: string, vertexIdx: number, e: any) => {
@@ -860,7 +857,9 @@ export default function MapCanvas({
               handles scale a single axis. Hidden during multi-select. */}
           <Transformer
             ref={transformerRef}
-            rotateEnabled={false}
+            rotateEnabled
+            rotationSnaps={[0, 15, 30, 45, 60, 90, 120, 135, 150, 180, 210, 225, 240, 270, 300, 315, 330, 345]}
+            rotationSnapTolerance={5}
             keepRatio={false}
             enabledAnchors={[
               "top-left", "top-center", "top-right",

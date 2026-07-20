@@ -5,7 +5,7 @@ import type { StoreCategory } from "@wain/types";
 
 const CATEGORIES: StoreCategory[] = [
   "retail","food","services","medical","education",
-  "transit","restroom","elevator","stairs","escalator","entrance","parking","dining",
+  "transit","restroom","restroom_male","restroom_female","elevator","stairs","escalator","entrance","parking","dining",
   "open_area","corridor","garden","building_border","door","tree","other",
 ];
 

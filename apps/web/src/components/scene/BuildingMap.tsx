@@ -36,12 +36,35 @@ function amenityBadge(s: StoreData): { icon: string; bg: string } | null {
   }
 }
 
-const LANDMARK_CATEGORIES = new Set(["restroom", "elevator", "stairs", "escalator", "entrance", "parking", "dining", "door", "tree", "services"]);
+const LANDMARK_CATEGORIES = new Set(["restroom", "restroom_male", "restroom_female", "elevator", "stairs", "escalator", "entrance", "parking", "dining", "door", "tree", "services"]);
 
 function categoryMarker(s: StoreData): { icon: string; bg: string } | null {
   if (!LANDMARK_CATEGORIES.has(s.category)) return null;
   const visual = categoryVisual(s.category);
   return { icon: visual.glyph, bg: visual.accent };
+}
+
+function restroomTiles(category: string): string | null {
+  const femaleTile = `
+    <div style="width:24px;height:28px;border-radius:4px;background:#db2777;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 4px rgba(15,23,42,0.22)">
+      <svg viewBox="0 0 24 28" width="18" height="22" aria-hidden="true">
+        <circle cx="12" cy="5" r="3" fill="#fff"/>
+        <path d="M12 9 L6.5 19 H9 L8 25 H10.2 L11.2 19 H12.8 L13.8 25 H16 L15 19 H17.5 Z" fill="#fff"/>
+        <path d="M7 11 L5.5 17 M17 11 L18.5 17" stroke="#fff" stroke-width="2" stroke-linecap="round"/>
+      </svg>
+    </div>`;
+  const maleTile = `
+    <div style="width:24px;height:28px;border-radius:4px;background:#2563eb;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 4px rgba(15,23,42,0.22)">
+      <svg viewBox="0 0 24 28" width="18" height="22" aria-hidden="true">
+        <circle cx="12" cy="5" r="3" fill="#fff"/>
+        <rect x="8" y="9" width="8" height="10" rx="2" fill="#fff"/>
+        <path d="M8 12 L5.5 18 M16 12 L18.5 18 M10 19 L10 25 M14 19 L14 25" stroke="#fff" stroke-width="2" stroke-linecap="round"/>
+      </svg>
+    </div>`;
+  if (category === "restroom_female") return femaleTile;
+  if (category === "restroom_male") return maleTile;
+  if (category === "restroom") return `${femaleTile}${maleTile}`;
+  return null;
 }
 
 interface RouteStep { nodeId: string; floorId: string; x: number; y: number; z: number; }
@@ -679,6 +702,12 @@ const BuildingMap = forwardRef<BuildingMapHandle, Props>(function BuildingMap(
       x: s.polygon.reduce((a, p) => a + p.x, 0) / s.polygon.length,
       y: s.polygon.reduce((a, p) => a + p.y, 0) / s.polygon.length,
     });
+    const markerBearing = (s: StoreData) => {
+      if (s.polygon.length < 2) return 0;
+      const c = centroid(s);
+      const tip = s.polygon[0];
+      return (Math.atan2(tip.y - c.y, tip.x - c.x) * 180) / Math.PI + 90;
+    };
     const addMarker = (lngLat: [number, number], el: HTMLElement) => {
       labelMarkersRef.current.push(new maplibregl.Marker({ element: el }).setLngLat(lngLat).addTo(map));
     };
@@ -741,10 +770,23 @@ const BuildingMap = forwardRef<BuildingMapHandle, Props>(function BuildingMap(
       if (am) {
         const el = document.createElement("div");
         el.dataset.kind = "amenity";
-        el.style.cssText = "pointer-events:none;transform:translate(-50%,-50%);display:flex;flex-direction:column;align-items:center;gap:2px";
-        el.innerHTML = `
-          <div style="width:26px;height:26px;border-radius:9999px;background:${am.bg};border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,0.25);display:flex;align-items:center;justify-content:center;font-size:14px;line-height:1">${am.icon}</div>
-          <div style="font-size:10px;font-weight:700;color:#0f172a;text-shadow:0 1px 0 #fff,0 0 3px rgba(255,255,255,0.9);max-width:90px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${name}</div>`;
+        const restroomIcon = restroomTiles(s.category);
+        if (restroomIcon) {
+          el.style.cssText = "pointer-events:none;transform:translate(-50%,-50%);display:flex;align-items:center;gap:3px;padding:3px;background:rgba(255,255,255,0.82);border-radius:6px;border:1px solid rgba(255,255,255,0.9);box-shadow:0 3px 8px rgba(15,23,42,0.22)";
+          el.innerHTML = restroomIcon;
+        } else if (s.category === "door") {
+          el.style.cssText = "pointer-events:none;transform:translate(-50%,-50%);display:flex;align-items:center;justify-content:center;width:38px;height:38px";
+          el.innerHTML = `
+            <div style="position:relative;width:28px;height:34px;transform:rotate(${markerBearing(s)}deg);filter:drop-shadow(0 2px 3px rgba(15,23,42,0.28))">
+              <div style="position:absolute;left:5px;right:5px;bottom:0;height:20px;background:${am.bg};border-radius:2px"></div>
+              <div style="position:absolute;left:0;top:0;width:0;height:0;border-left:14px solid transparent;border-right:14px solid transparent;border-bottom:17px solid ${am.bg}"></div>
+            </div>`;
+        } else {
+          el.style.cssText = "pointer-events:none;transform:translate(-50%,-50%);display:flex;flex-direction:column;align-items:center;gap:2px";
+          el.innerHTML = `
+            <div style="width:26px;height:26px;border-radius:9999px;background:${am.bg};border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,0.25);display:flex;align-items:center;justify-content:center;font-size:14px;line-height:1">${am.icon}</div>
+            <div style="font-size:10px;font-weight:700;color:#0f172a;text-shadow:0 1px 0 #fff,0 0 3px rgba(255,255,255,0.9);max-width:90px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${name}</div>`;
+        }
         addMarker(ll, el);
         continue;
       }

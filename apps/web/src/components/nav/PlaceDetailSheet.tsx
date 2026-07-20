@@ -17,6 +17,8 @@ const CATEGORY_META: Record<string, { tkey: TKey; emoji: string; tint: string }>
   food:      { tkey: "catFood",      emoji: "☕", tint: "bg-amber-50 text-amber-700 border-amber-200" },
   services:  { tkey: "catService",   emoji: "ⓘ",  tint: "bg-sky-50 text-sky-600 border-sky-200" },
   restroom:  { tkey: "catRestroom",  emoji: "WC", tint: "bg-indigo-50 text-indigo-600 border-indigo-200" },
+  restroom_male:  { tkey: "catRestroom",  emoji: "M", tint: "bg-blue-50 text-blue-600 border-blue-200" },
+  restroom_female:  { tkey: "catRestroom",  emoji: "F", tint: "bg-pink-50 text-pink-600 border-pink-200" },
   elevator:  { tkey: "catElevator",  emoji: "▦",  tint: "bg-violet-50 text-violet-600 border-violet-200" },
   entrance:  { tkey: "catEntrance",  emoji: "⌂",  tint: "bg-slate-50 text-slate-600 border-slate-200" },
   other:     { tkey: "catPlace",     emoji: "•",  tint: "bg-slate-50 text-slate-600 border-slate-200" },

@@ -99,10 +99,13 @@ export const SHAPE_PRESETS: ShapePreset[] = [
     extrudeHeight: 0,
     color: "#0f766e",
     build: (c, s = DEFAULT_HALF) => [
-      { x: c.x - s * 0.45, y: c.y - s * 0.12 },
-      { x: c.x + s * 0.45, y: c.y - s * 0.12 },
-      { x: c.x + s * 0.45, y: c.y + s * 0.12 },
-      { x: c.x - s * 0.45, y: c.y + s * 0.12 },
+      { x: c.x, y: c.y - s * 0.55 },
+      { x: c.x + s * 0.42, y: c.y - s * 0.08 },
+      { x: c.x + s * 0.16, y: c.y - s * 0.08 },
+      { x: c.x + s * 0.16, y: c.y + s * 0.55 },
+      { x: c.x - s * 0.16, y: c.y + s * 0.55 },
+      { x: c.x - s * 0.16, y: c.y - s * 0.08 },
+      { x: c.x - s * 0.42, y: c.y - s * 0.08 },
     ],
   },
   {

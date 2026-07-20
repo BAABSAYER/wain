@@ -251,7 +251,7 @@ export default function NavPage() {
     const matches = (s: StoreData & { floorId?: string }) => {
       const txt = `${s.name} ${s.nameAr}`.toLowerCase();
       switch (key) {
-        case "restroom": return s.category === "restroom";
+        case "restroom": return s.category === "restroom" || s.category === "restroom_male" || s.category === "restroom_female";
         case "elevator": return s.category === "elevator";
         case "stairs":   return s.category === "stairs" || s.category === "escalator";
         case "entrance": return s.category === "entrance";

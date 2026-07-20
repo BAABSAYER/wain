@@ -45,6 +45,8 @@ export type StoreCategory =
   | "education"
   | "transit"
   | "restroom"
+  | "restroom_male"
+  | "restroom_female"
   | "elevator"
   | "stairs"
   | "escalator"
