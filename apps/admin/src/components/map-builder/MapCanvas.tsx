@@ -738,7 +738,7 @@ export default function MapCanvas({
         <Layer>
           {assets.map((asset) => {
             const isSel = selectedKind === "asset" && selectedId === asset.id;
-            const size = 28 * (asset.scale || 1);
+            const size = 38 * (asset.scale || 1);
             const color = asset.color || "#64748b";
             return (
               <Group

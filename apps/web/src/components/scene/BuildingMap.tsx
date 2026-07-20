@@ -227,102 +227,117 @@ function makeFloorPatternImage(): { width: number; height: number; data: Uint8Ar
 }
 
 function assetModelHtml(asset: AssetData, color: string, scale: number) {
-  const s = Math.max(0.3, Math.min(scale, 3));
+  const s = Math.max(0.45, Math.min(scale * 1.35, 4));
   const common = `transform:scale(${s});transform-origin:50% 100%;`;
+  const label = (asset.label || asset.type).slice(0, 10).toUpperCase();
   switch (asset.type) {
     case "tree":
-      return `<div style="${common};position:relative;width:34px;height:54px">
-        <div style="position:absolute;left:14px;bottom:0;width:7px;height:22px;background:#8b5a2b;border-radius:2px;box-shadow:5px 0 0 #70461f"></div>
-        <div style="position:absolute;left:2px;bottom:18px;width:30px;height:30px;border-radius:50%;background:${color};box-shadow:8px 5px 0 rgba(20,83,45,0.55),-5px 7px 0 rgba(34,197,94,0.35)"></div>
-        <div style="position:absolute;left:10px;bottom:35px;width:18px;height:18px;border-radius:50%;background:#86efac"></div>
+      return `<div style="${common};position:relative;width:48px;height:70px">
+        <div style="position:absolute;left:20px;bottom:0;width:9px;height:28px;background:#8b5a2b;border-radius:3px;box-shadow:6px 0 0 #70461f"></div>
+        <div style="position:absolute;left:3px;bottom:22px;width:42px;height:38px;border-radius:50%;background:${color};box-shadow:11px 7px 0 rgba(20,83,45,0.55),-8px 8px 0 rgba(34,197,94,0.35),inset -8px -10px 0 rgba(21,128,61,0.22)"></div>
+        <div style="position:absolute;left:14px;bottom:47px;width:24px;height:24px;border-radius:50%;background:#bbf7d0"></div>
       </div>`;
     case "planter":
-      return `<div style="${common};position:relative;width:42px;height:34px">
-        <div style="position:absolute;left:5px;bottom:0;width:32px;height:16px;background:#8b5a2b;transform:skewX(-12deg);box-shadow:7px -4px 0 #a16207;border-radius:3px"></div>
-        <div style="position:absolute;left:12px;bottom:13px;width:18px;height:18px;border-radius:50%;background:${color};box-shadow:-8px 3px 0 #22c55e,8px 2px 0 #15803d"></div>
+      return `<div style="${common};position:relative;width:58px;height:44px">
+        <div style="position:absolute;left:6px;bottom:0;width:44px;height:20px;background:#8b5a2b;transform:skewX(-12deg);box-shadow:8px -5px 0 #a16207;border-radius:4px"></div>
+        <div style="position:absolute;left:13px;bottom:17px;width:24px;height:22px;border-radius:50%;background:${color};box-shadow:-11px 4px 0 #22c55e,11px 3px 0 #15803d"></div>
       </div>`;
     case "door":
-      return `<div style="${common};position:relative;width:54px;height:62px">
-        <div style="position:absolute;left:20px;bottom:2px;width:14px;height:44px;background:${color};box-shadow:9px -6px 0 rgba(15,23,42,0.3);transform:skewY(-12deg)"></div>
-        <div style="position:absolute;left:2px;bottom:37px;width:50px;height:22px;background:${color};clip-path:polygon(50% 0,100% 100%,0 100%);box-shadow:0 5px 0 rgba(15,23,42,0.25)"></div>
+      return `<div style="${common};position:relative;width:70px;height:72px">
+        <div style="position:absolute;left:25px;bottom:2px;width:18px;height:52px;background:${color};box-shadow:11px -7px 0 rgba(15,23,42,0.3);transform:skewY(-12deg)"></div>
+        <div style="position:absolute;left:3px;bottom:46px;width:64px;height:24px;background:${color};clip-path:polygon(50% 0,100% 100%,0 100%);box-shadow:0 6px 0 rgba(15,23,42,0.25)"></div>
+        <div style="position:absolute;left:28px;bottom:13px;width:4px;height:28px;background:rgba(255,255,255,0.65);border-radius:2px"></div>
       </div>`;
     case "stairs":
-      return `<div style="${common};position:relative;width:50px;height:36px">
-        ${[0, 1, 2, 3].map((i) => `<div style="position:absolute;left:${i * 8}px;bottom:${i * 6}px;width:28px;height:8px;background:${color};box-shadow:5px -3px 0 rgba(15,23,42,0.22);border-radius:1px"></div>`).join("")}
+      return `<div style="${common};position:relative;width:68px;height:48px">
+        ${[0, 1, 2, 3, 4].map((i) => `<div style="position:absolute;left:${i * 8}px;bottom:${i * 7}px;width:34px;height:9px;background:${color};box-shadow:7px -4px 0 rgba(15,23,42,0.22);border-radius:1px"></div>`).join("")}
+        <div style="position:absolute;left:6px;bottom:1px;width:58px;height:3px;background:rgba(255,255,255,0.65)"></div>
       </div>`;
     case "escalator":
-      return `<div style="${common};position:relative;width:58px;height:38px">
-        <div style="position:absolute;left:4px;bottom:6px;width:46px;height:12px;background:${color};transform:rotate(-24deg);border-radius:8px;box-shadow:4px 5px 0 rgba(15,23,42,0.22)"></div>
-        <div style="position:absolute;left:10px;bottom:19px;width:42px;height:4px;background:#e2e8f0;transform:rotate(-24deg);border-radius:4px"></div>
+      return `<div style="${common};position:relative;width:74px;height:52px">
+        <div style="position:absolute;left:5px;bottom:8px;width:58px;height:15px;background:${color};transform:rotate(-24deg);border-radius:9px;box-shadow:6px 6px 0 rgba(15,23,42,0.22)"></div>
+        <div style="position:absolute;left:13px;bottom:25px;width:52px;height:5px;background:#e2e8f0;transform:rotate(-24deg);border-radius:4px"></div>
+        <div style="position:absolute;left:13px;bottom:12px;width:12px;height:12px;border-radius:50%;background:#f8fafc;border:3px solid ${color}"></div>
       </div>`;
     case "bench":
-      return `<div style="${common};position:relative;width:58px;height:30px">
-        <div style="position:absolute;left:4px;bottom:16px;width:46px;height:9px;background:${color};border-radius:2px;box-shadow:6px -4px 0 rgba(15,23,42,0.22)"></div>
-        <div style="position:absolute;left:8px;bottom:6px;width:38px;height:8px;background:${color};border-radius:2px"></div>
-        <div style="position:absolute;left:11px;bottom:0;width:4px;height:8px;background:#475569"></div><div style="position:absolute;right:13px;bottom:0;width:4px;height:8px;background:#475569"></div>
+      return `<div style="${common};position:relative;width:76px;height:44px">
+        <div style="position:absolute;left:5px;bottom:25px;width:60px;height:11px;background:${color};border-radius:3px;box-shadow:8px -5px 0 rgba(15,23,42,0.22)"></div>
+        <div style="position:absolute;left:10px;bottom:11px;width:50px;height:10px;background:${color};border-radius:3px"></div>
+        <div style="position:absolute;left:15px;bottom:0;width:5px;height:13px;background:#475569"></div><div style="position:absolute;right:18px;bottom:0;width:5px;height:13px;background:#475569"></div>
+        <div style="position:absolute;left:11px;bottom:28px;width:50px;height:2px;background:rgba(255,255,255,0.55)"></div>
       </div>`;
     case "barrier":
-      return `<div style="${common};position:relative;width:64px;height:30px">
-        <div style="position:absolute;left:4px;bottom:13px;width:54px;height:7px;background:${color};transform:skewX(-18deg);box-shadow:5px -3px 0 rgba(15,23,42,0.25)"></div>
-        <div style="position:absolute;left:8px;bottom:0;width:5px;height:22px;background:#334155"></div><div style="position:absolute;right:10px;bottom:0;width:5px;height:22px;background:#334155"></div>
+      return `<div style="${common};position:relative;width:82px;height:42px">
+        <div style="position:absolute;left:4px;bottom:19px;width:70px;height:9px;background:${color};transform:skewX(-18deg);box-shadow:7px -4px 0 rgba(15,23,42,0.25)"></div>
+        <div style="position:absolute;left:12px;bottom:0;width:6px;height:30px;background:#334155"></div><div style="position:absolute;right:14px;bottom:0;width:6px;height:30px;background:#334155"></div>
+        <div style="position:absolute;left:19px;bottom:22px;width:14px;height:3px;background:rgba(255,255,255,0.72);transform:skewX(-18deg)"></div>
+        <div style="position:absolute;left:42px;bottom:22px;width:14px;height:3px;background:rgba(255,255,255,0.72);transform:skewX(-18deg)"></div>
       </div>`;
     case "elevator":
-      return `<div style="${common};position:relative;width:46px;height:54px">
-        <div style="position:absolute;left:7px;bottom:0;width:30px;height:46px;background:linear-gradient(90deg,#e2e8f0 0 47%,#94a3b8 47% 53%,#cbd5e1 53%);border:2px solid ${color};border-radius:4px 4px 1px 1px;box-shadow:9px -6px 0 rgba(15,23,42,0.2)"></div>
-        <div style="position:absolute;left:13px;bottom:31px;width:7px;height:7px;border-left:5px solid transparent;border-right:5px solid transparent;border-bottom:8px solid ${color}"></div>
-        <div style="position:absolute;left:24px;bottom:31px;width:7px;height:7px;border-left:5px solid transparent;border-right:5px solid transparent;border-top:8px solid ${color}"></div>
+      return `<div style="${common};position:relative;width:58px;height:72px">
+        <div style="position:absolute;left:8px;bottom:0;width:40px;height:60px;background:linear-gradient(90deg,#e2e8f0 0 47%,#94a3b8 47% 53%,#cbd5e1 53%);border:3px solid ${color};border-radius:6px 6px 2px 2px;box-shadow:11px -7px 0 rgba(15,23,42,0.2)"></div>
+        <div style="position:absolute;left:14px;bottom:41px;width:10px;height:9px;border-left:6px solid transparent;border-right:6px solid transparent;border-bottom:10px solid ${color}"></div>
+        <div style="position:absolute;left:31px;bottom:41px;width:10px;height:9px;border-left:6px solid transparent;border-right:6px solid transparent;border-top:10px solid ${color}"></div>
+        <div style="position:absolute;left:16px;bottom:7px;width:24px;height:2px;background:rgba(255,255,255,0.75);box-shadow:0 -10px 0 rgba(255,255,255,0.45),0 -20px 0 rgba(255,255,255,0.35)"></div>
       </div>`;
     case "reception":
-      return `<div style="${common};position:relative;width:62px;height:42px">
-        <div style="position:absolute;left:8px;bottom:0;width:44px;height:22px;background:${color};border-radius:5px 5px 2px 2px;box-shadow:9px -6px 0 rgba(15,23,42,0.2),inset 0 8px 0 rgba(255,255,255,0.22)"></div>
-        <div style="position:absolute;left:18px;bottom:18px;width:24px;height:15px;background:#f8fafc;border:2px solid ${color};border-radius:3px;box-shadow:5px -3px 0 rgba(15,23,42,0.14)"></div>
+      return `<div style="${common};position:relative;width:78px;height:54px">
+        <div style="position:absolute;left:9px;bottom:0;width:58px;height:28px;background:${color};border-radius:6px 6px 3px 3px;box-shadow:10px -7px 0 rgba(15,23,42,0.2),inset 0 10px 0 rgba(255,255,255,0.22)"></div>
+        <div style="position:absolute;left:24px;bottom:23px;width:30px;height:19px;background:#f8fafc;border:3px solid ${color};border-radius:4px;box-shadow:6px -4px 0 rgba(15,23,42,0.14)"></div>
+        <div style="position:absolute;left:18px;bottom:8px;width:42px;height:5px;background:rgba(255,255,255,0.35);border-radius:999px"></div>
       </div>`;
     case "info":
-      return `<div style="${common};position:relative;width:42px;height:58px">
-        <div style="position:absolute;left:17px;bottom:0;width:8px;height:36px;background:${color};box-shadow:5px -3px 0 rgba(15,23,42,0.2)"></div>
-        <div style="position:absolute;left:8px;bottom:31px;width:26px;height:20px;background:#f8fafc;border:3px solid ${color};border-radius:5px;box-shadow:6px -4px 0 rgba(15,23,42,0.18)"></div>
-        <div style="position:absolute;left:5px;bottom:0;width:32px;height:6px;background:#64748b;border-radius:999px"></div>
+      return `<div style="${common};position:relative;width:54px;height:76px">
+        <div style="position:absolute;left:22px;bottom:0;width:10px;height:46px;background:${color};box-shadow:6px -4px 0 rgba(15,23,42,0.2)"></div>
+        <div style="position:absolute;left:7px;bottom:40px;width:40px;height:27px;background:#f8fafc;border:4px solid ${color};border-radius:7px;box-shadow:7px -5px 0 rgba(15,23,42,0.18);font:bold 20px/22px system-ui;color:${color};text-align:center">i</div>
+        <div style="position:absolute;left:5px;bottom:0;width:44px;height:7px;background:#64748b;border-radius:999px"></div>
       </div>`;
     case "security":
-      return `<div style="${common};position:relative;width:54px;height:56px">
-        <div style="position:absolute;left:9px;bottom:0;width:34px;height:36px;background:${color};clip-path:polygon(10% 0,90% 0,100% 100%,0 100%);box-shadow:8px -5px 0 rgba(15,23,42,0.2)"></div>
-        <div style="position:absolute;left:15px;bottom:25px;width:22px;height:18px;background:#dbeafe;border-radius:3px;border:2px solid #e2e8f0"></div>
-        <div style="position:absolute;left:20px;bottom:41px;width:12px;height:10px;background:#334155;border-radius:8px 8px 2px 2px"></div>
+      return `<div style="${common};position:relative;width:66px;height:72px">
+        <div style="position:absolute;left:11px;bottom:0;width:42px;height:46px;background:${color};clip-path:polygon(10% 0,90% 0,100% 100%,0 100%);box-shadow:10px -6px 0 rgba(15,23,42,0.2)"></div>
+        <div style="position:absolute;left:18px;bottom:32px;width:28px;height:22px;background:#dbeafe;border-radius:4px;border:3px solid #e2e8f0"></div>
+        <div style="position:absolute;left:24px;bottom:52px;width:16px;height:12px;background:#334155;border-radius:9px 9px 3px 3px"></div>
+        <div style="position:absolute;left:20px;bottom:8px;width:24px;height:5px;background:rgba(255,255,255,0.35);border-radius:999px"></div>
       </div>`;
     case "parking":
-      return `<div style="${common};position:relative;width:48px;height:58px">
-        <div style="position:absolute;left:20px;bottom:0;width:7px;height:38px;background:#475569"></div>
-        <div style="position:absolute;left:7px;bottom:31px;width:34px;height:24px;background:${color};border-radius:5px;box-shadow:7px -4px 0 rgba(15,23,42,0.18)"></div>
-        <div style="position:absolute;left:15px;bottom:38px;width:18px;height:10px;border-radius:6px 6px 2px 2px;background:#eff6ff;box-shadow:0 8px 0 #eff6ff"></div>
+      return `<div style="${common};position:relative;width:60px;height:76px">
+        <div style="position:absolute;left:26px;bottom:0;width:8px;height:48px;background:#475569"></div>
+        <div style="position:absolute;left:8px;bottom:40px;width:44px;height:31px;background:${color};border-radius:6px;box-shadow:8px -5px 0 rgba(15,23,42,0.18);font:bold 25px/31px system-ui;color:#fff;text-align:center">P</div>
+        <div style="position:absolute;left:21px;bottom:4px;width:18px;height:5px;background:#334155;border-radius:999px"></div>
       </div>`;
     case "dining":
-      return `<div style="${common};position:relative;width:60px;height:42px">
-        <div style="position:absolute;left:18px;bottom:12px;width:24px;height:18px;background:${color};border-radius:50%;box-shadow:6px -4px 0 rgba(15,23,42,0.18)"></div>
-        <div style="position:absolute;left:8px;bottom:9px;width:9px;height:16px;background:#94a3b8;border-radius:6px 6px 2px 2px"></div>
-        <div style="position:absolute;right:8px;bottom:9px;width:9px;height:16px;background:#94a3b8;border-radius:6px 6px 2px 2px"></div>
-        <div style="position:absolute;left:27px;bottom:0;width:5px;height:14px;background:#475569"></div>
+      return `<div style="${common};position:relative;width:76px;height:56px">
+        <div style="position:absolute;left:24px;bottom:17px;width:30px;height:24px;background:${color};border-radius:50%;box-shadow:8px -5px 0 rgba(15,23,42,0.18),inset -5px -4px 0 rgba(0,0,0,0.13)"></div>
+        <div style="position:absolute;left:7px;bottom:13px;width:12px;height:21px;background:#94a3b8;border-radius:7px 7px 3px 3px"></div>
+        <div style="position:absolute;right:8px;bottom:13px;width:12px;height:21px;background:#94a3b8;border-radius:7px 7px 3px 3px"></div>
+        <div style="position:absolute;left:36px;bottom:0;width:6px;height:18px;background:#475569"></div>
+        <div style="position:absolute;left:30px;bottom:26px;width:18px;height:2px;background:rgba(255,255,255,0.6);transform:rotate(-20deg)"></div>
       </div>`;
     case "kiosk":
-      return `<div style="${common};position:relative;width:48px;height:58px">
-        <div style="position:absolute;left:10px;bottom:0;width:28px;height:42px;background:${color};border-radius:5px;box-shadow:8px -6px 0 rgba(15,23,42,0.22)"></div>
-        <div style="position:absolute;left:15px;bottom:23px;width:18px;height:13px;background:#e0f2fe;border-radius:2px"></div>
-        <div style="position:absolute;left:13px;bottom:8px;width:22px;height:6px;background:rgba(255,255,255,0.45);border-radius:999px"></div>
+      return `<div style="${common};position:relative;width:58px;height:76px">
+        <div style="position:absolute;left:12px;bottom:0;width:36px;height:56px;background:${color};border-radius:7px;box-shadow:10px -7px 0 rgba(15,23,42,0.22)"></div>
+        <div style="position:absolute;left:18px;bottom:31px;width:24px;height:18px;background:#e0f2fe;border-radius:3px"></div>
+        <div style="position:absolute;left:17px;bottom:11px;width:26px;height:8px;background:rgba(255,255,255,0.45);border-radius:999px"></div>
+        <div style="position:absolute;left:20px;bottom:23px;width:20px;height:3px;background:rgba(15,23,42,0.35)"></div>
       </div>`;
     case "atm":
-      return `<div style="${common};position:relative;width:48px;height:58px">
-        <div style="position:absolute;left:9px;bottom:0;width:30px;height:44px;background:${color};border-radius:5px;box-shadow:8px -6px 0 rgba(15,23,42,0.22)"></div>
-        <div style="position:absolute;left:14px;bottom:27px;width:20px;height:11px;background:#dbeafe;border-radius:2px"></div>
-        <div style="position:absolute;left:15px;bottom:19px;width:18px;height:3px;background:#0f172a;border-radius:999px"></div>
-        <div style="position:absolute;left:18px;bottom:8px;width:12px;height:8px;background:rgba(255,255,255,0.35);border-radius:2px"></div>
+      return `<div style="${common};position:relative;width:58px;height:76px">
+        <div style="position:absolute;left:11px;bottom:0;width:38px;height:58px;background:${color};border-radius:7px;box-shadow:10px -7px 0 rgba(15,23,42,0.22)"></div>
+        <div style="position:absolute;left:17px;bottom:39px;width:26px;height:14px;background:#dbeafe;border-radius:3px"></div>
+        <div style="position:absolute;left:17px;bottom:28px;width:25px;height:4px;background:#0f172a;border-radius:999px"></div>
+        <div style="position:absolute;left:21px;bottom:11px;width:17px;height:12px;background:rgba(255,255,255,0.35);border-radius:2px"></div>
+        <div style="position:absolute;left:16px;bottom:60px;width:28px;height:10px;background:#0f172a;border-radius:4px;color:#fff;font:bold 7px/10px system-ui;text-align:center">ATM</div>
       </div>`;
     case "sign":
-      return `<div style="${common};position:relative;width:52px;height:58px">
-        <div style="position:absolute;left:23px;bottom:0;width:6px;height:34px;background:#475569"></div>
-        <div style="position:absolute;left:6px;bottom:30px;width:40px;height:18px;background:${color};clip-path:polygon(0 0,82% 0,100% 50%,82% 100%,0 100%);box-shadow:6px -4px 0 rgba(15,23,42,0.2)"></div>
+      return `<div style="${common};position:relative;width:68px;height:76px">
+        <div style="position:absolute;left:30px;bottom:0;width:8px;height:46px;background:#475569"></div>
+        <div style="position:absolute;left:7px;bottom:40px;width:54px;height:24px;background:${color};clip-path:polygon(0 0,82% 0,100% 50%,82% 100%,0 100%);box-shadow:8px -5px 0 rgba(15,23,42,0.2)"></div>
+        <div style="position:absolute;left:15px;bottom:48px;width:28px;height:3px;background:rgba(255,255,255,0.68);border-radius:999px"></div>
       </div>`;
     default:
-      return `<div style="${common};position:relative;width:44px;height:46px">
-        <div style="position:absolute;left:6px;bottom:0;width:30px;height:34px;background:${color};clip-path:polygon(18% 0,100% 10%,84% 100%,0 88%);box-shadow:8px -6px 0 rgba(15,23,42,0.22),inset 0 1px 0 rgba(255,255,255,0.35)"></div>
+      return `<div style="${common};position:relative;width:62px;height:58px">
+        <div style="position:absolute;left:8px;bottom:0;width:44px;height:42px;background:${color};clip-path:polygon(18% 0,100% 10%,84% 100%,0 88%);box-shadow:10px -7px 0 rgba(15,23,42,0.22),inset 0 1px 0 rgba(255,255,255,0.35)"></div>
+        <div style="position:absolute;left:16px;bottom:16px;width:30px;height:10px;background:rgba(255,255,255,0.32);border-radius:2px;font:bold 6px/10px system-ui;text-align:center;color:#fff">${label}</div>
       </div>`;
   }
 }
@@ -819,18 +834,18 @@ const BuildingMap = forwardRef<BuildingMapHandle, Props>(function BuildingMap(
       el.title = asset.label || asset.type;
       el.style.cssText = [
         "pointer-events:none",
-        "width:72px",
-        "height:72px",
-        "transform:translate(-50%,-86%)",
+        "width:104px",
+        "height:104px",
+        "transform:translate(-50%,-88%)",
         "transform-style:preserve-3d",
-        "filter:drop-shadow(0 9px 8px rgba(15,23,42,0.24))",
+        "filter:drop-shadow(0 12px 10px rgba(15,23,42,0.28))",
       ].join(";");
-      el.innerHTML = `<div style="width:72px;height:72px;display:flex;align-items:flex-end;justify-content:center;transform:rotate(${rotation}deg)">${assetModelHtml(asset, color, scale)}</div>`;
+      el.innerHTML = `<div style="width:104px;height:104px;display:flex;align-items:flex-end;justify-content:center;transform:rotate(${rotation}deg)">${assetModelHtml(asset, color, scale)}</div>`;
       assetMarkersRef.current.push(new maplibregl.Marker({ element: el }).setLngLat(toLngLat(asset.x, asset.y)).addTo(map));
     }
 
     const applyLod = () => {
-      const show = map.getZoom() >= fitZoomRef.current + 0.25;
+      const show = map.getZoom() >= fitZoomRef.current + 0.45;
       for (const marker of assetMarkersRef.current) {
         marker.getElement().style.display = show ? "" : "none";
       }
