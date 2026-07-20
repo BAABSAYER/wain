@@ -31,7 +31,7 @@ export default function FloorEditorPage() {
   const [qrPrompt, setQrPrompt] = useState<{ nodeId: string; label: string } | null>(null);
   const [qrError, setQrError] = useState<string | null>(null);
 
-  const { isDirty, markClean, loadFromApi, stores, nodes, edges, setTool } = useMapBuilderStore();
+  const { isDirty, markClean, loadFromApi, stores, assets, nodes, edges, setTool } = useMapBuilderStore();
   const { url: publicAppUrl } = usePublicAppUrl();
 
   // Track viewport size for canvas
@@ -83,7 +83,20 @@ export default function FloorEditorPage() {
           id: e.id, fromId: e.fromNodeId, toId: e.toNodeId,
         })),
     );
-    loadFromApi(canvasStores, canvasNodes, canvasEdges);
+    const canvasAssets = (f.assets ?? []).map((a: any) => ({
+      id: a.id,
+      type: a.type,
+      label: a.label ?? "",
+      x: a.x,
+      y: a.y,
+      z: a.z ?? 0,
+      rotation: a.rotation ?? 0,
+      scale: a.scale ?? 1,
+      color: a.color ?? null,
+      modelUrl: a.modelUrl ?? null,
+      navNodeId: a.navNodeId ?? null,
+    }));
+    loadFromApi(canvasStores, canvasNodes, canvasEdges, canvasAssets);
   }, [buildingId, floorId, loadFromApi]);
 
   // Load floor + QR codes
@@ -141,6 +154,19 @@ export default function FloorEditorPage() {
           await api.setStoreNavLinks(savedStore.id ?? store.id, mappedLinks);
         }
       }
+
+      await api.bulkSaveAssets(floorId, assets.map((asset) => ({
+        type: asset.type,
+        label: asset.label ?? "",
+        x: asset.x,
+        y: asset.y,
+        z: asset.z ?? 0,
+        rotation: asset.rotation ?? 0,
+        scale: asset.scale ?? 1,
+        color: asset.color ?? null,
+        modelUrl: asset.modelUrl ?? null,
+        navNodeId: mapId(asset.navNodeId),
+      })));
       markClean();
 
       // 4. Pull the saved state back so local store / node ids are the real
@@ -153,7 +179,7 @@ export default function FloorEditorPage() {
     } finally {
       setIsSaving(false);
     }
-  }, [stores, nodes, edges, floor, floorId, markClean, reloadFloor]);
+  }, [stores, assets, nodes, edges, floor, floorId, markClean, reloadFloor]);
 
   // Triggered when user uses the QR tool and clicks a nav node on the canvas
   const handleCreateQRFromNode = useCallback((nodeId: string) => {
@@ -289,6 +315,23 @@ export default function FloorEditorPage() {
               Graph
             </div>
             <p className="text-xs text-slate-600">{nodes.length} nodes · {edges.length} edges</p>
+          </div>
+
+          <div className="p-3 border-b border-slate-200">
+            <div className="text-xs text-slate-500 font-semibold uppercase tracking-wider mb-2">
+              Assets ({assets.length})
+            </div>
+            <div className="space-y-1">
+              {assets.map((a) => (
+                <div key={a.id} className="text-xs text-slate-700 py-1 flex items-center gap-2 truncate">
+                  <span className="inline-block w-2.5 h-2.5 rounded-sm flex-shrink-0 border border-slate-200" style={{ backgroundColor: a.color ?? "#64748b" }} />
+                  <span className="truncate">{a.label || a.type}</span>
+                </div>
+              ))}
+              {assets.length === 0 && (
+                <p className="text-xs text-slate-400 italic">None yet</p>
+              )}
+            </div>
           </div>
 
           <div className="p-3 flex-1">

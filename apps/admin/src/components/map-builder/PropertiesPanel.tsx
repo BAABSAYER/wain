@@ -1,12 +1,13 @@
 "use client";
 import { useMapBuilderStore } from "@/store/map-builder";
 import BulkEditPanel from "./BulkEditPanel";
-import type { StoreCategory } from "@wain/types";
+import { ASSET_PRESETS, findAssetPreset } from "./asset-presets";
+import type { AssetType, StoreCategory } from "@wain/types";
 
 const CATEGORIES: StoreCategory[] = [
   "retail","food","services","medical","education",
   "transit","restroom","restroom_male","restroom_female","elevator","stairs","escalator","entrance","parking","dining",
-  "open_area","corridor","garden","building_border","door","tree","other",
+  "open_area","corridor","garden","building_border","other",
 ];
 
 const NODE_TYPES = ["path", "entrance", "elevator", "stairs", "escalator", "qr"] as const;
@@ -33,8 +34,8 @@ interface Props {
 
 export default function PropertiesPanel({ floors = [], currentFloorId }: Props) {
   const {
-    selectedId, selectedKind, extraSelectedIds, stores, nodes, edges,
-    updateStore, removeStore, updateNode, removeNode, removeEdge,
+    selectedId, selectedKind, extraSelectedIds, stores, assets, nodes, edges,
+    updateStore, removeStore, updateAsset, removeAsset, updateNode, removeNode, removeEdge,
     enterLinkMode, toggleStoreNavLink, setStoreNavLinks, linkModeStoreId,
   } = useMapBuilderStore();
 
@@ -58,6 +59,7 @@ export default function PropertiesPanel({ floors = [], currentFloorId }: Props) 
   }
 
   const store = selectedKind === "store" ? stores.find((s) => s.id === selectedId) : null;
+  const asset = selectedKind === "asset" ? assets.find((a) => a.id === selectedId) : null;
   const node  = selectedKind === "node"  ? nodes.find((n) => n.id === selectedId)  : null;
   const edge  = selectedKind === "edge"  ? edges.find((e) => e.id === selectedId)  : null;
 
@@ -286,6 +288,108 @@ export default function PropertiesPanel({ floors = [], currentFloorId }: Props) 
           className="mt-2 px-3 py-1.5 bg-red-50 hover:bg-red-100 border border-red-200 rounded text-sm text-red-700 font-medium"
         >
           Delete Room
+        </button>
+      </div>
+    );
+  }
+
+  if (asset) {
+    const preset = findAssetPreset(asset.type);
+    return (
+      <div className="p-4 flex flex-col gap-4">
+        <div className="flex items-center justify-between">
+          <h3 className="font-semibold text-slate-900">3D Asset</h3>
+          <span className="text-xs px-2 py-0.5 rounded-full bg-slate-100 text-slate-500">
+            {preset?.label ?? asset.type}
+          </span>
+        </div>
+
+        <label className="flex flex-col gap-1">
+          <span className="text-xs text-slate-500 font-medium">Type</span>
+          <select
+            className="bg-white border border-slate-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 rounded px-3 py-1.5 text-sm text-slate-900 outline-none"
+            value={asset.type}
+            onChange={(e) => {
+              const next = findAssetPreset(e.target.value);
+              updateAsset(asset.id, {
+                type: e.target.value as AssetType,
+                label: asset.label || next?.label || "",
+                color: next?.color ?? asset.color,
+                scale: asset.scale || next?.defaultScale || 1,
+              });
+            }}
+          >
+            {ASSET_PRESETS.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
+          </select>
+        </label>
+
+        <label className="flex flex-col gap-1">
+          <span className="text-xs text-slate-500 font-medium">Label</span>
+          <input
+            className="bg-white border border-slate-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 rounded px-3 py-1.5 text-sm text-slate-900 outline-none"
+            value={asset.label ?? ""}
+            onChange={(e) => updateAsset(asset.id, { label: e.target.value })}
+          />
+        </label>
+
+        <div className="grid grid-cols-2 gap-3">
+          <label className="flex flex-col gap-1">
+            <span className="text-xs text-slate-500 font-medium">X</span>
+            <input type="number" className="bg-white border border-slate-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 rounded px-3 py-1.5 text-sm text-slate-900 outline-none" value={Math.round(asset.x)} onChange={(e) => updateAsset(asset.id, { x: Number(e.target.value) })} />
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className="text-xs text-slate-500 font-medium">Y</span>
+            <input type="number" className="bg-white border border-slate-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 rounded px-3 py-1.5 text-sm text-slate-900 outline-none" value={Math.round(asset.y)} onChange={(e) => updateAsset(asset.id, { y: Number(e.target.value) })} />
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className="text-xs text-slate-500 font-medium">Rotation</span>
+            <input type="number" className="bg-white border border-slate-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 rounded px-3 py-1.5 text-sm text-slate-900 outline-none" value={Math.round(asset.rotation)} onChange={(e) => updateAsset(asset.id, { rotation: Number(e.target.value) })} />
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className="text-xs text-slate-500 font-medium">Scale</span>
+            <input type="number" min={0.1} step={0.1} className="bg-white border border-slate-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 rounded px-3 py-1.5 text-sm text-slate-900 outline-none" value={asset.scale} onChange={(e) => updateAsset(asset.id, { scale: Number(e.target.value) })} />
+          </label>
+        </div>
+
+        <label className="flex flex-col gap-1">
+          <span className="text-xs text-slate-500 font-medium">Color</span>
+          <input
+            type="color"
+            className="h-9 bg-white border border-slate-300 rounded px-1"
+            value={asset.color ?? preset?.color ?? "#64748b"}
+            onChange={(e) => updateAsset(asset.id, { color: e.target.value })}
+          />
+        </label>
+
+        <label className="flex flex-col gap-1">
+          <span className="text-xs text-slate-500 font-medium">Model URL</span>
+          <input
+            className="bg-white border border-slate-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 rounded px-3 py-1.5 text-sm text-slate-900 outline-none font-mono text-xs"
+            placeholder="Optional GLB/GLTF URL"
+            value={asset.modelUrl ?? ""}
+            onChange={(e) => updateAsset(asset.id, { modelUrl: e.target.value || null })}
+          />
+        </label>
+
+        <label className="flex flex-col gap-1">
+          <span className="text-xs text-slate-500 font-medium">Linked nav node</span>
+          <select
+            className="bg-white border border-slate-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 rounded px-3 py-1.5 text-sm text-slate-900 outline-none"
+            value={asset.navNodeId ?? ""}
+            onChange={(e) => updateAsset(asset.id, { navNodeId: e.target.value || null })}
+          >
+            <option value="">Not linked</option>
+            {nodes.map((n) => (
+              <option key={n.id} value={n.id}>{n.type} ({Math.round(n.x)}, {Math.round(n.y)})</option>
+            ))}
+          </select>
+        </label>
+
+        <button
+          onClick={() => removeAsset(asset.id)}
+          className="mt-2 px-3 py-1.5 bg-red-50 hover:bg-red-100 border border-red-200 rounded text-sm text-red-700 font-medium"
+        >
+          Delete Asset
         </button>
       </div>
     );

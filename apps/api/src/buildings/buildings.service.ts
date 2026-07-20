@@ -18,7 +18,7 @@ export class BuildingsService {
       include: {
         floors: {
           orderBy: { level: "asc" },
-          include: { stores: true, navNodes: true },
+          include: { stores: true, assets: true, navNodes: true },
         },
       },
     });
@@ -32,7 +32,7 @@ export class BuildingsService {
       include: {
         floors: {
           orderBy: { level: "asc" },
-          include: { stores: true, navNodes: { include: { edgesFrom: true } } },
+          include: { stores: true, assets: true, navNodes: { include: { edgesFrom: true } } },
         },
       },
     });

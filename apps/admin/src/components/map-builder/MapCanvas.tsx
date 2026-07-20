@@ -28,6 +28,7 @@ const Transformer = TransformerRaw as unknown as ComponentType<any>;
 import useImage from "use-image";
 import { useMapBuilderStore } from "@/store/map-builder";
 import { findPreset } from "./shape-presets";
+import { findAssetPreset } from "./asset-presets";
 import { nanoid } from "./nanoid";
 import { copyToClipboard, pasteFromClipboard } from "./clipboard";
 
@@ -68,10 +69,11 @@ export default function MapCanvas({
   const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
 
   const {
-    tool, selectedId, selectedKind, extraSelectedIds, stores, nodes, edges,
-    activePolygon, activePreset,
+    tool, selectedId, selectedKind, extraSelectedIds, stores, assets, nodes, edges,
+    activePolygon, activePreset, activeAssetPreset,
     addPolygonPoint, commitPolygon, clearActivePolygon,
     addNode, addEdge, addPresetStore, setActivePreset,
+    addAsset, updateAsset, removeAsset,
     setSelected, setTool, updateStore, updateNode,
     removeStore, removeNode, removeEdge,
     toggleExtraSelection, selectAllStores,
@@ -179,6 +181,23 @@ export default function MapCanvas({
     const pos = tool === "node" ? snapToNavLine(raw) : snapToGrid(raw);
     if (tool === "polygon") { pushSnapshot(); addPolygonPoint(pos); return; }
     if (tool === "node")    { pushSnapshot(); addNode({ id: nanoid(), x: pos.x, y: pos.y, type: "path" }); return; }
+    if (tool === "asset" && activeAssetPreset) {
+      const preset = findAssetPreset(activeAssetPreset);
+      if (!preset) return;
+      pushSnapshot();
+      addAsset({
+        id: nanoid(),
+        type: preset.id,
+        label: preset.label,
+        x: pos.x,
+        y: pos.y,
+        z: 0,
+        rotation: 0,
+        scale: preset.defaultScale ?? 1,
+        color: preset.color,
+      });
+      return;
+    }
     if (tool === "shape" && activePreset) {
       const preset = findPreset(activePreset);
       if (!preset) return;
@@ -195,7 +214,7 @@ export default function MapCanvas({
       // Keep the preset selected so the user can drop several in a row.
       return;
     }
-  }, [tool, activePreset, getStagePos, addPolygonPoint, addNode, addPresetStore, setSelected, pushSnapshot, snapToGrid, snapToNavLine]);
+  }, [tool, activePreset, activeAssetPreset, getStagePos, addPolygonPoint, addNode, addAsset, addPresetStore, setSelected, pushSnapshot, snapToGrid, snapToNavLine]);
 
   const handleStageDblClick = useCallback(() => {
     if (tool === "polygon" && activePolygon.length >= 3) {
@@ -401,6 +420,10 @@ export default function MapCanvas({
           e.preventDefault();
           pushSnapshot();
           removeNode(selectedId);
+        } else if (selectedKind === "asset" && selectedId) {
+          e.preventDefault();
+          pushSnapshot();
+          removeAsset(selectedId);
         } else if (selectedKind === "edge" && selectedId) {
           e.preventDefault();
           pushSnapshot();
@@ -431,6 +454,13 @@ export default function MapCanvas({
             if (!e.repeat) pushSnapshot();
             updateNode(selectedId, { x: n.x + dx, y: n.y + dy });
           }
+        } else if (selectedKind === "asset" && selectedId) {
+          const asset = assets.find((a) => a.id === selectedId);
+          if (asset) {
+            e.preventDefault();
+            if (!e.repeat) pushSnapshot();
+            updateAsset(selectedId, { x: asset.x + dx, y: asset.y + dy });
+          }
         }
       }
     };
@@ -438,10 +468,10 @@ export default function MapCanvas({
     return () => window.removeEventListener("keydown", handler);
   }, [
     clearActivePolygon, setSelected, setActivePreset,
-    selectedId, selectedKind, extraSelectedIds, stores, nodes,
+    selectedId, selectedKind, extraSelectedIds, stores, assets, nodes,
     addPresetStore, addNode, selectAllStores,
-    removeStore, removeNode, removeEdge,
-    updateStore, updateNode,
+    removeStore, removeAsset, removeNode, removeEdge,
+    updateStore, updateAsset, updateNode,
     pushSnapshot, undo, redo,
   ]);
 
@@ -523,6 +553,10 @@ export default function MapCanvas({
     updateStore(storeId, { polygon: next });
   }, [stores, updateStore, snap]);
 
+  const handleAssetDragEnd = useCallback((assetId: string, e: any) => {
+    updateAsset(assetId, { x: snap(e.target.x()), y: snap(e.target.y()) });
+  }, [updateAsset, snap]);
+
   // Cursor handling for hover affordances (move on shape, resize on vertex)
   const setCursor = (cur: string) => {
     const container = stageRef.current?.container?.();
@@ -570,6 +604,16 @@ export default function MapCanvas({
       {tool === "shape" && activePreset && (
         <div className="absolute top-2 left-1/2 -translate-x-1/2 bg-blue-500 text-white text-xs px-3 py-1 rounded-full z-10 shadow">
           Click anywhere on the floor to drop the shape — ESC to cancel
+        </div>
+      )}
+      {tool === "asset" && !activeAssetPreset && (
+        <div className="absolute top-2 left-1/2 -translate-x-1/2 bg-slate-700 text-white text-xs px-3 py-1 rounded-full z-10 shadow">
+          Pick a 3D asset from the toolbar above
+        </div>
+      )}
+      {tool === "asset" && activeAssetPreset && (
+        <div className="absolute top-2 left-1/2 -translate-x-1/2 bg-blue-500 text-white text-xs px-3 py-1 rounded-full z-10 shadow">
+          Click anywhere on the floor to place the asset
         </div>
       )}
       {tool === "qr" && (
@@ -688,6 +732,47 @@ export default function MapCanvas({
               ))}
             </>
           )}
+        </Layer>
+
+        {/* Physical assets layer */}
+        <Layer>
+          {assets.map((asset) => {
+            const isSel = selectedKind === "asset" && selectedId === asset.id;
+            const size = 28 * (asset.scale || 1);
+            const color = asset.color || "#64748b";
+            return (
+              <Group
+                key={asset.id}
+                x={asset.x}
+                y={asset.y}
+                rotation={asset.rotation}
+                draggable={tool === "select"}
+                onDragStart={() => { pushSnapshot(); }}
+                onDragEnd={(e: any) => handleAssetDragEnd(asset.id, e)}
+                onClick={(e: any) => { e.cancelBubble = true; setSelected(asset.id, "asset"); }}
+                onTap={(e: any) => { e.cancelBubble = true; setSelected(asset.id, "asset"); }}
+                onMouseEnter={() => tool === "select" && setCursor("move")}
+                onMouseLeave={() => tool === "select" && setCursor("crosshair")}
+              >
+                {asset.type === "tree" || asset.type === "planter" ? (
+                  <>
+                    <Circle x={0} y={0} radius={size * 0.42} fill={color} stroke={isSel ? "#2563eb" : "#ffffff"} strokeWidth={isSel ? 3 : 1.5} />
+                    <Rect x={-size * 0.08} y={size * 0.1} width={size * 0.16} height={size * 0.42} fill="#92400e" cornerRadius={2} />
+                  </>
+                ) : asset.type === "door" || asset.type === "sign" ? (
+                  <Line
+                    points={[0, -size * 0.55, size * 0.42, -size * 0.08, size * 0.16, -size * 0.08, size * 0.16, size * 0.55, -size * 0.16, size * 0.55, -size * 0.16, -size * 0.08, -size * 0.42, -size * 0.08]}
+                    closed
+                    fill={color}
+                    stroke={isSel ? "#2563eb" : "#ffffff"}
+                    strokeWidth={isSel ? 3 : 1.5}
+                  />
+                ) : (
+                  <Rect x={-size * 0.5} y={-size * 0.35} width={size} height={size * 0.7} fill={color} stroke={isSel ? "#2563eb" : "#ffffff"} strokeWidth={isSel ? 3 : 1.5} cornerRadius={4} />
+                )}
+              </Group>
+            );
+          })}
         </Layer>
 
         {/* Nav graph layer */}

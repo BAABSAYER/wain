@@ -92,38 +92,6 @@ export const SHAPE_PRESETS: ShapePreset[] = [
     },
   },
   {
-    id: "door",
-    label: "Door",
-    icon: "DR",
-    category: "door",
-    extrudeHeight: 0,
-    color: "#0f766e",
-    build: (c, s = DEFAULT_HALF) => [
-      { x: c.x, y: c.y - s * 0.55 },
-      { x: c.x + s * 0.42, y: c.y - s * 0.08 },
-      { x: c.x + s * 0.16, y: c.y - s * 0.08 },
-      { x: c.x + s * 0.16, y: c.y + s * 0.55 },
-      { x: c.x - s * 0.16, y: c.y + s * 0.55 },
-      { x: c.x - s * 0.16, y: c.y - s * 0.08 },
-      { x: c.x - s * 0.42, y: c.y - s * 0.08 },
-    ],
-  },
-  {
-    id: "tree",
-    label: "Tree",
-    icon: "TR",
-    category: "tree",
-    extrudeHeight: 0,
-    color: "#16a34a",
-    build: (c, s = DEFAULT_HALF) => {
-      const sides = 16;
-      return Array.from({ length: sides }, (_, i) => {
-        const theta = (i / sides) * Math.PI * 2;
-        return { x: c.x + Math.cos(theta) * s * 0.35, y: c.y + Math.sin(theta) * s * 0.35 };
-      });
-    },
-  },
-  {
     id: "building-border",
     label: "Building Border",
     icon: "BD",

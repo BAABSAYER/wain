@@ -19,6 +19,20 @@ interface StoreData {
   logoUrl?: string | null;
 }
 
+interface AssetData {
+  id: string;
+  type: string;
+  label?: string | null;
+  x: number;
+  y: number;
+  z?: number | null;
+  rotation?: number | null;
+  scale?: number | null;
+  color?: string | null;
+  modelUrl?: string | null;
+  navNodeId?: string | null;
+}
+
 // Amenity categories → badge icon + color (wayfinding highlights)
 function amenityBadge(s: StoreData): { icon: string; bg: string } | null {
   switch (s.category) {
@@ -77,6 +91,7 @@ export interface SceneProjectionInfo {
 
 interface Props {
   stores: StoreData[];
+  assets?: AssetData[];
   routeSteps: RouteStep[];
   destinationId: string | null;
   selectedId: string | null;
@@ -211,8 +226,65 @@ function makeFloorPatternImage(): { width: number; height: number; data: Uint8Ar
   return { width: size, height: size, data: new Uint8Array(img.data.buffer) };
 }
 
+function assetModelHtml(asset: AssetData, color: string, scale: number) {
+  const s = Math.max(0.3, Math.min(scale, 3));
+  const common = `transform:scale(${s});transform-origin:50% 100%;`;
+  switch (asset.type) {
+    case "tree":
+      return `<div style="${common};position:relative;width:34px;height:54px">
+        <div style="position:absolute;left:14px;bottom:0;width:7px;height:22px;background:#8b5a2b;border-radius:2px;box-shadow:5px 0 0 #70461f"></div>
+        <div style="position:absolute;left:2px;bottom:18px;width:30px;height:30px;border-radius:50%;background:${color};box-shadow:8px 5px 0 rgba(20,83,45,0.55),-5px 7px 0 rgba(34,197,94,0.35)"></div>
+        <div style="position:absolute;left:10px;bottom:35px;width:18px;height:18px;border-radius:50%;background:#86efac"></div>
+      </div>`;
+    case "planter":
+      return `<div style="${common};position:relative;width:42px;height:34px">
+        <div style="position:absolute;left:5px;bottom:0;width:32px;height:16px;background:#8b5a2b;transform:skewX(-12deg);box-shadow:7px -4px 0 #a16207;border-radius:3px"></div>
+        <div style="position:absolute;left:12px;bottom:13px;width:18px;height:18px;border-radius:50%;background:${color};box-shadow:-8px 3px 0 #22c55e,8px 2px 0 #15803d"></div>
+      </div>`;
+    case "door":
+      return `<div style="${common};position:relative;width:54px;height:62px">
+        <div style="position:absolute;left:20px;bottom:2px;width:14px;height:44px;background:${color};box-shadow:9px -6px 0 rgba(15,23,42,0.3);transform:skewY(-12deg)"></div>
+        <div style="position:absolute;left:2px;bottom:37px;width:50px;height:22px;background:${color};clip-path:polygon(50% 0,100% 100%,0 100%);box-shadow:0 5px 0 rgba(15,23,42,0.25)"></div>
+      </div>`;
+    case "stairs":
+      return `<div style="${common};position:relative;width:50px;height:36px">
+        ${[0, 1, 2, 3].map((i) => `<div style="position:absolute;left:${i * 8}px;bottom:${i * 6}px;width:28px;height:8px;background:${color};box-shadow:5px -3px 0 rgba(15,23,42,0.22);border-radius:1px"></div>`).join("")}
+      </div>`;
+    case "escalator":
+      return `<div style="${common};position:relative;width:58px;height:38px">
+        <div style="position:absolute;left:4px;bottom:6px;width:46px;height:12px;background:${color};transform:rotate(-24deg);border-radius:8px;box-shadow:4px 5px 0 rgba(15,23,42,0.22)"></div>
+        <div style="position:absolute;left:10px;bottom:19px;width:42px;height:4px;background:#e2e8f0;transform:rotate(-24deg);border-radius:4px"></div>
+      </div>`;
+    case "bench":
+      return `<div style="${common};position:relative;width:58px;height:30px">
+        <div style="position:absolute;left:4px;bottom:16px;width:46px;height:9px;background:${color};border-radius:2px;box-shadow:6px -4px 0 rgba(15,23,42,0.22)"></div>
+        <div style="position:absolute;left:8px;bottom:6px;width:38px;height:8px;background:${color};border-radius:2px"></div>
+        <div style="position:absolute;left:11px;bottom:0;width:4px;height:8px;background:#475569"></div><div style="position:absolute;right:13px;bottom:0;width:4px;height:8px;background:#475569"></div>
+      </div>`;
+    case "barrier":
+      return `<div style="${common};position:relative;width:64px;height:30px">
+        <div style="position:absolute;left:4px;bottom:13px;width:54px;height:7px;background:${color};transform:skewX(-18deg);box-shadow:5px -3px 0 rgba(15,23,42,0.25)"></div>
+        <div style="position:absolute;left:8px;bottom:0;width:5px;height:22px;background:#334155"></div><div style="position:absolute;right:10px;bottom:0;width:5px;height:22px;background:#334155"></div>
+      </div>`;
+    case "elevator":
+    case "reception":
+    case "info":
+    case "security":
+    case "parking":
+    case "dining":
+    case "kiosk":
+    case "atm":
+    case "sign":
+    default:
+      return `<div style="${common};position:relative;width:42px;height:44px">
+        <div style="position:absolute;left:6px;bottom:0;width:28px;height:34px;background:${color};border-radius:4px;box-shadow:9px -6px 0 rgba(15,23,42,0.25),inset 0 1px 0 rgba(255,255,255,0.35)"></div>
+        <div style="position:absolute;left:11px;bottom:9px;width:18px;height:16px;background:rgba(255,255,255,0.28);border-radius:2px"></div>
+      </div>`;
+  }
+}
+
 const BuildingMap = forwardRef<BuildingMapHandle, Props>(function BuildingMap(
-  { stores, routeSteps, destinationId, selectedId, highlightCategory = null, floorWidth, floorHeight,
+  { stores, assets = [], routeSteps, destinationId, selectedId, highlightCategory = null, floorWidth, floorHeight,
     origin, focus, heading, initialAzimuth, locale = "en", navEdges = [], onProjection, onBlockClick },
   ref,
 ) {
@@ -220,6 +292,7 @@ const BuildingMap = forwardRef<BuildingMapHandle, Props>(function BuildingMap(
   const mapRef = useRef<maplibregl.Map | null>(null);
   const youMarkerRef = useRef<maplibregl.Marker | null>(null);
   const labelMarkersRef = useRef<maplibregl.Marker[]>([]);
+  const assetMarkersRef = useRef<maplibregl.Marker[]>([]);
   const readyRef = useRef(false);
   const lastRouteCameraKeyRef = useRef<string | null>(null);
   // `ready` STATE (not just the ref) so data/marker effects re-run once the map
@@ -685,6 +758,47 @@ const BuildingMap = forwardRef<BuildingMapHandle, Props>(function BuildingMap(
       map.setPaintProperty("rooms-outline", "line-width", outlineWidthExpr);
     }
   }, [colorExpr, outlineColorExpr, outlineWidthExpr, ready]);
+
+  // Physical assets live in their own layer, separate from rooms/areas.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !readyRef.current) return;
+    assetMarkersRef.current.forEach((m) => m.remove());
+    assetMarkersRef.current = [];
+
+    for (const asset of assets) {
+      const el = document.createElement("div");
+      const color = asset.color || "#64748b";
+      const rotation = Number(asset.rotation ?? 0);
+      const scale = Number(asset.scale ?? 1);
+      el.dataset.kind = "asset";
+      el.title = asset.label || asset.type;
+      el.style.cssText = [
+        "pointer-events:none",
+        "width:72px",
+        "height:72px",
+        "transform:translate(-50%,-86%)",
+        "transform-style:preserve-3d",
+        "filter:drop-shadow(0 9px 8px rgba(15,23,42,0.24))",
+      ].join(";");
+      el.innerHTML = `<div style="width:72px;height:72px;display:flex;align-items:flex-end;justify-content:center;transform:rotate(${rotation}deg)">${assetModelHtml(asset, color, scale)}</div>`;
+      assetMarkersRef.current.push(new maplibregl.Marker({ element: el }).setLngLat(toLngLat(asset.x, asset.y)).addTo(map));
+    }
+
+    const applyLod = () => {
+      const show = map.getZoom() >= fitZoomRef.current + 0.25;
+      for (const marker of assetMarkersRef.current) {
+        marker.getElement().style.display = show ? "" : "none";
+      }
+    };
+    applyLod();
+    map.on("zoom", applyLod);
+    return () => {
+      map.off("zoom", applyLod);
+      assetMarkersRef.current.forEach((m) => m.remove());
+      assetMarkersRef.current = [];
+    };
+  }, [assets, toLngLat, ready]);
 
   // ── Markers: zone pills + amenity badges + logos + room labels ─────────────
   useEffect(() => {

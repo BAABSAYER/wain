@@ -77,6 +77,14 @@ export const api = {
   deleteStore: (id: string)               => req<any>(`/stores/${id}`, { method: "DELETE" }),
   searchStores: (buildingId: string, q: string) => req<any[]>(`/stores/search?buildingId=${buildingId}&q=${encodeURIComponent(q)}`),
 
+  // Assets
+  getAssets:   (floorId: string)          => req<any[]>(`/assets/floor/${floorId}`),
+  createAsset: (data: any)                => req<any>("/assets", { method: "POST", body: JSON.stringify(data) }),
+  updateAsset: (id: string, data: any)    => req<any>(`/assets/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
+  bulkSaveAssets: (floorId: string, assets: any[]) =>
+                                              req<any[]>(`/assets/floor/${floorId}/bulk`, { method: "PUT", body: JSON.stringify({ assets }) }),
+  deleteAsset: (id: string)               => req<any>(`/assets/${id}`, { method: "DELETE" }),
+
   // Nav graph
   getGraph:    (buildingId: string)       => req<any[]>(`/nav/graph/${buildingId}`),
   bulkSaveGraph: (floorId: string, data: any) => req<any>(`/nav/graph/${floorId}/bulk`, { method: "POST", body: JSON.stringify(data) }),

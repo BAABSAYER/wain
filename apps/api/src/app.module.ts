@@ -5,6 +5,7 @@ import { CacheModule } from "./cache/cache.module";
 import { BuildingsModule } from "./buildings/buildings.module";
 import { FloorsModule } from "./floors/floors.module";
 import { StoresModule } from "./stores/stores.module";
+import { AssetsModule } from "./assets/assets.module";
 import { NavModule } from "./nav/nav.module";
 import { RoutingModule } from "./routing/routing.module";
 import { QrModule } from "./qr/qr.module";
@@ -20,6 +21,7 @@ import { AuthGuard } from "./auth/auth.guard";
     BuildingsModule,
     FloorsModule,
     StoresModule,
+    AssetsModule,
     NavModule,
     RoutingModule,
     QrModule,

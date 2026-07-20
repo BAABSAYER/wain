@@ -38,7 +38,7 @@ interface BuildingData {
 interface FloorData {
   id: string; name: string; nameAr?: string; level: number;
   width: number; height: number;
-  stores: StoreData[]; navNodes: NavNodeData[];
+  stores: StoreData[]; assets?: AssetData[]; navNodes: NavNodeData[];
 }
 interface StoreData {
   id: string; name: string; nameAr: string;
@@ -46,6 +46,12 @@ interface StoreData {
   extrudeHeight: number; color: string; category: string;
 }
 interface NavNodeData { id: string; x: number; y: number; z: number; floorId: string; }
+interface AssetData {
+  id: string; type: string; label?: string | null;
+  x: number; y: number; z?: number | null;
+  rotation?: number | null; scale?: number | null;
+  color?: string | null; modelUrl?: string | null; navNodeId?: string | null;
+}
 interface RouteResult {
   steps: Array<{ nodeId: string; floorId: string; x: number; y: number; z: number }>;
   totalDistance: number;
@@ -418,6 +424,7 @@ export default function NavPage() {
           <BuildingScene
             ref={sceneRef}
             stores={allStores}
+            assets={currentFloor.assets ?? []}
             routeSteps={routeForCurrentFloor}
             destinationId={route?.destination?.id ?? null}
             selectedId={selectedStore?.id ?? null}

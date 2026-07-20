@@ -1,12 +1,13 @@
 "use client";
 import { create } from "zustand";
-import type { DrawTool, CanvasStore, CanvasNode, CanvasEdge } from "@wain/types";
+import type { DrawTool, CanvasStore, CanvasAsset, CanvasNode, CanvasEdge } from "@wain/types";
 
-export type SelectionKind = "store" | "node" | "edge" | null;
+export type SelectionKind = "store" | "asset" | "node" | "edge" | null;
 
 /** Frozen snapshot of the geometry; what undo / redo restore. */
 interface HistorySnapshot {
   stores: CanvasStore[];
+  assets: CanvasAsset[];
   nodes: CanvasNode[];
   edges: CanvasEdge[];
 }
@@ -19,12 +20,14 @@ interface MapBuilderState {
   /** Additional rooms shift-clicked to form a multi-selection for bulk edits. */
   extraSelectedIds: string[];
   stores: CanvasStore[];
+  assets: CanvasAsset[];
   nodes: CanvasNode[];
   edges: CanvasEdge[];
   qrPoints: Array<{ id: string; nodeId: string; label: string }>;
   activePolygon: Array<{ x: number; y: number }>;
   /** When the "shape" tool is active, which preset to drop on next canvas click. */
   activePreset: string | null;
+  activeAssetPreset: string | null;
   /** Snap drags / preset drops to the nearest 10-unit grid when true. */
   gridSnap: boolean;
   setGridSnap: (on: boolean) => void;
@@ -52,7 +55,12 @@ interface MapBuilderState {
   clearActivePolygon: () => void;
 
   setActivePreset: (id: string | null) => void;
+  setActiveAssetPreset: (id: string | null) => void;
   addPresetStore: (store: CanvasStore) => void;
+
+  addAsset: (asset: CanvasAsset) => void;
+  updateAsset: (id: string, patch: Partial<CanvasAsset>) => void;
+  removeAsset: (id: string) => void;
 
   addNode: (node: CanvasNode) => void;
   updateNode: (id: string, patch: Partial<CanvasNode>) => void;
@@ -77,7 +85,7 @@ interface MapBuilderState {
   undo: () => void;
   redo: () => void;
 
-  loadFromApi: (stores: CanvasStore[], nodes: CanvasNode[], edges: CanvasEdge[]) => void;
+  loadFromApi: (stores: CanvasStore[], nodes: CanvasNode[], edges: CanvasEdge[], assets?: CanvasAsset[]) => void;
   markClean: () => void;
 }
 
@@ -87,11 +95,13 @@ export const useMapBuilderStore = create<MapBuilderState>((set) => ({
   selectedKind: null,
   extraSelectedIds: [],
   stores: [],
+  assets: [],
   nodes: [],
   edges: [],
   qrPoints: [],
   activePolygon: [],
   activePreset: null,
+  activeAssetPreset: null,
   gridSnap: false,
   linkModeStoreId: null,
   isDirty: false,
@@ -102,6 +112,7 @@ export const useMapBuilderStore = create<MapBuilderState>((set) => ({
     tool,
     activePolygon: [],
     activePreset: null,
+    activeAssetPreset: null,
     selectedId: null,
     selectedKind: null,
     extraSelectedIds: [],
@@ -152,6 +163,7 @@ export const useMapBuilderStore = create<MapBuilderState>((set) => ({
   clearActivePolygon: () => set({ activePolygon: [] }),
 
   setActivePreset: (id) => set({ activePreset: id }),
+  setActiveAssetPreset: (id) => set({ activeAssetPreset: id }),
   setGridSnap: (on) => set({ gridSnap: on }),
 
   enterLinkMode: (storeId) => set({ linkModeStoreId: storeId }),
@@ -182,6 +194,28 @@ export const useMapBuilderStore = create<MapBuilderState>((set) => ({
       stores: [...s.stores, store],
       selectedId: store.id,
       selectedKind: "store",
+      isDirty: true,
+    })),
+
+  addAsset: (asset) =>
+    set((s) => ({
+      assets: [...s.assets, asset],
+      selectedId: asset.id,
+      selectedKind: "asset" as SelectionKind,
+      isDirty: true,
+    })),
+
+  updateAsset: (id, patch) =>
+    set((s) => ({
+      assets: s.assets.map((asset) => (asset.id === id ? { ...asset, ...patch } : asset)),
+      isDirty: true,
+    })),
+
+  removeAsset: (id) =>
+    set((s) => ({
+      assets: s.assets.filter((asset) => asset.id !== id),
+      selectedId: s.selectedId === id ? null : s.selectedId,
+      selectedKind: s.selectedId === id ? null : s.selectedKind,
       isDirty: true,
     })),
 
@@ -251,7 +285,7 @@ export const useMapBuilderStore = create<MapBuilderState>((set) => ({
 
   pushSnapshot: () =>
     set((s) => ({
-      past: [...s.past, { stores: s.stores, nodes: s.nodes, edges: s.edges }].slice(-HISTORY_LIMIT),
+      past: [...s.past, { stores: s.stores, assets: s.assets, nodes: s.nodes, edges: s.edges }].slice(-HISTORY_LIMIT),
       future: [],
     })),
 
@@ -259,19 +293,22 @@ export const useMapBuilderStore = create<MapBuilderState>((set) => ({
     set((s) => {
       if (s.past.length === 0) return s;
       const previous = s.past[s.past.length - 1];
-      const current: HistorySnapshot = { stores: s.stores, nodes: s.nodes, edges: s.edges };
+      const current: HistorySnapshot = { stores: s.stores, assets: s.assets, nodes: s.nodes, edges: s.edges };
       return {
         past: s.past.slice(0, -1),
         future: [current, ...s.future].slice(0, HISTORY_LIMIT),
         stores: previous.stores,
+        assets: previous.assets,
         nodes: previous.nodes,
         edges: previous.edges,
         isDirty: true,
         // Drop selections that no longer exist post-undo.
         selectedId: previous.stores.some((st) => st.id === s.selectedId)
+                 || previous.assets.some((asset) => asset.id === s.selectedId)
                  || previous.nodes.some((n) => n.id === s.selectedId)
                  || previous.edges.some((e) => e.id === s.selectedId) ? s.selectedId : null,
         selectedKind: previous.stores.some((st) => st.id === s.selectedId)
+                   || previous.assets.some((asset) => asset.id === s.selectedId)
                    || previous.nodes.some((n) => n.id === s.selectedId)
                    || previous.edges.some((e) => e.id === s.selectedId) ? s.selectedKind : null,
         extraSelectedIds: s.extraSelectedIds.filter((id) => previous.stores.some((st) => st.id === id)),
@@ -282,29 +319,32 @@ export const useMapBuilderStore = create<MapBuilderState>((set) => ({
     set((s) => {
       if (s.future.length === 0) return s;
       const next = s.future[0];
-      const current: HistorySnapshot = { stores: s.stores, nodes: s.nodes, edges: s.edges };
+      const current: HistorySnapshot = { stores: s.stores, assets: s.assets, nodes: s.nodes, edges: s.edges };
       return {
         past: [...s.past, current].slice(-HISTORY_LIMIT),
         future: s.future.slice(1),
         stores: next.stores,
+        assets: next.assets,
         nodes: next.nodes,
         edges: next.edges,
         isDirty: true,
         selectedId: next.stores.some((st) => st.id === s.selectedId)
+                 || next.assets.some((asset) => asset.id === s.selectedId)
                  || next.nodes.some((n) => n.id === s.selectedId)
                  || next.edges.some((e) => e.id === s.selectedId) ? s.selectedId : null,
         selectedKind: next.stores.some((st) => st.id === s.selectedId)
+                   || next.assets.some((asset) => asset.id === s.selectedId)
                    || next.nodes.some((n) => n.id === s.selectedId)
                    || next.edges.some((e) => e.id === s.selectedId) ? s.selectedKind : null,
         extraSelectedIds: s.extraSelectedIds.filter((id) => next.stores.some((st) => st.id === id)),
       };
     }),
 
-  loadFromApi: (stores, nodes, edges) =>
+  loadFromApi: (stores, nodes, edges, assets = []) =>
     set({
-      stores, nodes, edges, isDirty: false,
+      stores, assets, nodes, edges, isDirty: false,
       selectedId: null, selectedKind: null, extraSelectedIds: [],
-      activePreset: null, linkModeStoreId: null, past: [], future: [],
+      activePreset: null, activeAssetPreset: null, linkModeStoreId: null, past: [], future: [],
     }),
 
   markClean: () => set({ isDirty: false }),

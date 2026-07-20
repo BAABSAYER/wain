@@ -40,6 +40,7 @@ model Floor {
 
   building  Building  @relation(fields: [buildingId], references: [id], onDelete: Cascade)
   stores    Store[]
+  assets    Asset[]
   navNodes  NavNode[]
 
   @@unique([buildingId, level])
@@ -91,6 +92,7 @@ model NavNode {
   qrPoints     QRPoint[]
   edgesFrom    NavEdge[]  @relation("EdgeFrom")
   edgesTo      NavEdge[]  @relation("EdgeTo")
+  assets       Asset[]
 }
 
 // Join table for the M:N Store ↔ NavNode relationship. A store opens "for
@@ -107,6 +109,29 @@ model StoreNavLink {
 
   @@id([storeId, navNodeId])
   @@index([navNodeId])
+}
+
+model Asset {
+  id        String   @id @default(cuid())
+  floorId   String
+  type      String
+  label     String   @default("")
+  x         Float
+  y         Float
+  z         Float    @default(0)
+  rotation  Float    @default(0)
+  scale     Float    @default(1)
+  color     String?
+  modelUrl  String?
+  navNodeId String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  floor   Floor    @relation(fields: [floorId], references: [id], onDelete: Cascade)
+  navNode NavNode? @relation(fields: [navNodeId], references: [id], onDelete: SetNull)
+
+  @@index([floorId])
+  @@index([type])
 }
 
 model NavEdge {

@@ -79,6 +79,39 @@ export interface Store {
 
 export type NodeType = "path" | "entrance" | "elevator" | "stairs" | "escalator" | "qr";
 
+export type AssetType =
+  | "door"
+  | "tree"
+  | "elevator"
+  | "stairs"
+  | "escalator"
+  | "reception"
+  | "info"
+  | "security"
+  | "parking"
+  | "dining"
+  | "bench"
+  | "planter"
+  | "kiosk"
+  | "atm"
+  | "barrier"
+  | "sign";
+
+export interface Asset {
+  id: string;
+  floorId: string;
+  type: AssetType;
+  label: string;
+  x: number;
+  y: number;
+  z: number;
+  rotation: number;
+  scale: number;
+  color?: string | null;
+  modelUrl?: string | null;
+  navNodeId?: string | null;
+}
+
 export interface NavNode {
   id: string;
   floorId: string;
@@ -151,7 +184,7 @@ export interface ApiError {
 
 // ─── Map Builder canvas types ─────────────────────────────────────────────────
 
-export type DrawTool = "select" | "polygon" | "shape" | "node" | "edge" | "qr" | "pan";
+export type DrawTool = "select" | "polygon" | "shape" | "asset" | "node" | "edge" | "qr" | "pan";
 
 export interface CanvasStore {
   id: string;
@@ -171,6 +204,20 @@ export interface CanvasStore {
   navLinkNodeIds?: string[];
 }
 
+export interface CanvasAsset {
+  id: string;
+  type: AssetType;
+  label?: string;
+  x: number;
+  y: number;
+  z?: number;
+  rotation: number;
+  scale: number;
+  color?: string | null;
+  modelUrl?: string | null;
+  navNodeId?: string | null;
+}
+
 export interface CanvasNode {
   id: string;
   x: number;
@@ -187,6 +234,7 @@ export interface CanvasEdge {
 
 export interface CanvasState {
   stores: CanvasStore[];
+  assets: CanvasAsset[];
   nodes: CanvasNode[];
   edges: CanvasEdge[];
   qrPoints: Array<{ id: string; nodeId: string; label: string }>;

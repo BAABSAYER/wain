@@ -10,7 +10,7 @@ export class FloorsService {
     return this.prisma.floor.findMany({
       where: { buildingId },
       orderBy: { level: "asc" },
-      include: { stores: true, navNodes: { include: { edgesFrom: true } } },
+      include: { stores: true, assets: true, navNodes: { include: { edgesFrom: true } } },
     });
   }
 
@@ -19,6 +19,7 @@ export class FloorsService {
       where: { id },
       include: {
         stores: { include: { navLinks: { select: { navNodeId: true } } } },
+        assets: true,
         navNodes: { include: { edgesFrom: true } },
       },
     });
