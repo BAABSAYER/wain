@@ -342,6 +342,94 @@ function assetModelHtml(asset: AssetData, color: string, scale: number) {
   }
 }
 
+function transformAssetPoint(asset: AssetData, x: number, y: number) {
+  const r = ((asset.rotation ?? 0) * Math.PI) / 180;
+  const cos = Math.cos(r);
+  const sin = Math.sin(r);
+  return {
+    x: asset.x + x * cos - y * sin,
+    y: asset.y + x * sin + y * cos,
+  };
+}
+
+function rectAsset(asset: AssetData, width: number, height: number) {
+  return [
+    transformAssetPoint(asset, -width / 2, -height / 2),
+    transformAssetPoint(asset, width / 2, -height / 2),
+    transformAssetPoint(asset, width / 2, height / 2),
+    transformAssetPoint(asset, -width / 2, height / 2),
+  ];
+}
+
+function circleAsset(asset: AssetData, radius: number, sides = 14) {
+  return Array.from({ length: sides }, (_, i) => {
+    const t = (i / sides) * Math.PI * 2;
+    return transformAssetPoint(asset, Math.cos(t) * radius, Math.sin(t) * radius);
+  });
+}
+
+function assetFootprint(asset: AssetData) {
+  const s = Math.max(0.35, Math.min(asset.scale ?? 1, 4));
+  switch (asset.type) {
+    case "tree": return circleAsset(asset, 28 * s, 18);
+    case "planter": return rectAsset(asset, 60 * s, 34 * s);
+    case "door":
+      return [
+        transformAssetPoint(asset, 0, -38 * s),
+        transformAssetPoint(asset, 34 * s, 12 * s),
+        transformAssetPoint(asset, 13 * s, 12 * s),
+        transformAssetPoint(asset, 13 * s, 42 * s),
+        transformAssetPoint(asset, -13 * s, 42 * s),
+        transformAssetPoint(asset, -13 * s, 12 * s),
+        transformAssetPoint(asset, -34 * s, 12 * s),
+      ];
+    case "sign":
+      return [
+        transformAssetPoint(asset, -34 * s, -18 * s),
+        transformAssetPoint(asset, 18 * s, -18 * s),
+        transformAssetPoint(asset, 36 * s, 0),
+        transformAssetPoint(asset, 18 * s, 18 * s),
+        transformAssetPoint(asset, -34 * s, 18 * s),
+      ];
+    case "stairs": return rectAsset(asset, 72 * s, 46 * s);
+    case "escalator": return rectAsset(asset, 80 * s, 28 * s);
+    case "bench": return rectAsset(asset, 84 * s, 28 * s);
+    case "barrier": return rectAsset(asset, 92 * s, 18 * s);
+    case "dining": return circleAsset(asset, 30 * s, 16);
+    case "elevator": return rectAsset(asset, 48 * s, 58 * s);
+    case "reception": return rectAsset(asset, 82 * s, 42 * s);
+    case "info": return rectAsset(asset, 42 * s, 54 * s);
+    case "security": return rectAsset(asset, 56 * s, 56 * s);
+    case "parking": return rectAsset(asset, 48 * s, 60 * s);
+    case "kiosk": return rectAsset(asset, 46 * s, 62 * s);
+    case "atm": return rectAsset(asset, 46 * s, 62 * s);
+    default: return rectAsset(asset, 48 * s, 42 * s);
+  }
+}
+
+function assetHeight(asset: AssetData) {
+  const s = Math.max(0.35, Math.min(asset.scale ?? 1, 4));
+  switch (asset.type) {
+    case "tree": return 9 * s;
+    case "door": return 3 * s;
+    case "planter": return 1.8 * s;
+    case "bench": return 1.6 * s;
+    case "barrier": return 1.4 * s;
+    case "stairs": return 1.8 * s;
+    case "escalator": return 2 * s;
+    case "dining": return 1.5 * s;
+    case "sign":
+    case "parking":
+    case "info": return 5 * s;
+    case "elevator":
+    case "security":
+    case "kiosk":
+    case "atm": return 6 * s;
+    case "reception": return 3 * s;
+    default: return 3 * s;
+  }
+}
+
 const BuildingMap = forwardRef<BuildingMapHandle, Props>(function BuildingMap(
   { stores, assets = [], routeSteps, destinationId, selectedId, highlightCategory = null, floorWidth, floorHeight,
     origin, focus, heading, initialAzimuth, locale = "en", navEdges = [], onProjection, onBlockClick },
@@ -351,7 +439,6 @@ const BuildingMap = forwardRef<BuildingMapHandle, Props>(function BuildingMap(
   const mapRef = useRef<maplibregl.Map | null>(null);
   const youMarkerRef = useRef<maplibregl.Marker | null>(null);
   const labelMarkersRef = useRef<maplibregl.Marker[]>([]);
-  const assetMarkersRef = useRef<maplibregl.Marker[]>([]);
   const readyRef = useRef(false);
   const lastRouteCameraKeyRef = useRef<string | null>(null);
   // `ready` STATE (not just the ref) so data/marker effects re-run once the map
@@ -447,6 +534,25 @@ const BuildingMap = forwardRef<BuildingMapHandle, Props>(function BuildingMap(
         };
       }),
   }), [stores, toLngLat]);
+
+  const assetsFC = useMemo(() => ({
+    type: "FeatureCollection" as const,
+    features: assets.map((asset) => {
+      const ring = assetFootprint(asset).map((p) => toLngLat(p.x, p.y));
+      if (ring.length > 0) ring.push(ring[0]);
+      return {
+        type: "Feature" as const,
+        id: asset.id,
+        properties: {
+          id: asset.id,
+          type: asset.type,
+          color: asset.color || "#64748b",
+          height: assetHeight(asset),
+        },
+        geometry: { type: "Polygon" as const, coordinates: [ring] },
+      };
+    }),
+  }), [assets, toLngLat]);
 
   const routeFC = useMemo(() => ({
     type: "FeatureCollection" as const,
@@ -634,6 +740,35 @@ const BuildingMap = forwardRef<BuildingMapHandle, Props>(function BuildingMap(
         },
       });
 
+      map.addSource("assets", { type: "geojson", data: assetsFC, promoteId: "id" });
+      map.addLayer({
+        id: "assets-shadow", type: "fill", source: "assets",
+        paint: {
+          "fill-color": "#756d5f",
+          "fill-opacity": ["interpolate", ["linear"], ["zoom"], 16, 0.06, 19, 0.18],
+          "fill-translate": [5, 6],
+          "fill-translate-anchor": "map",
+        },
+      });
+      map.addLayer({
+        id: "assets-3d", type: "fill-extrusion", source: "assets",
+        paint: {
+          "fill-extrusion-color": ["coalesce", ["get", "color"], "#64748b"],
+          "fill-extrusion-height": ["get", "height"],
+          "fill-extrusion-base": 0,
+          "fill-extrusion-opacity": ["interpolate", ["linear"], ["zoom"], 16, 0.35, 18, 0.78, 20, 1],
+          "fill-extrusion-vertical-gradient": true,
+        },
+      });
+      map.addLayer({
+        id: "assets-outline", type: "line", source: "assets",
+        paint: {
+          "line-color": "#ffffff",
+          "line-width": ["interpolate", ["linear"], ["zoom"], 16, 0.4, 20, 1.6],
+          "line-opacity": ["interpolate", ["linear"], ["zoom"], 16, 0.15, 19, 0.75],
+        },
+      });
+
       // Route ribbon: a thick rounded bright-blue band with a darker edge and
       // large white chevrons inside it (LEAP-style). Widths interpolate with
       // zoom so the ribbon stays proportionally chunky as you zoom in.
@@ -807,6 +942,12 @@ const BuildingMap = forwardRef<BuildingMapHandle, Props>(function BuildingMap(
     (map.getSource("boundaries") as maplibregl.GeoJSONSource | undefined)?.setData(boundariesFC as any);
   }, [boundariesFC, ready]);
 
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !readyRef.current) return;
+    (map.getSource("assets") as maplibregl.GeoJSONSource | undefined)?.setData(assetsFC as any);
+  }, [assetsFC, ready]);
+
   // Recolor on selection/destination change
   useEffect(() => {
     const map = mapRef.current;
@@ -817,47 +958,6 @@ const BuildingMap = forwardRef<BuildingMapHandle, Props>(function BuildingMap(
       map.setPaintProperty("rooms-outline", "line-width", outlineWidthExpr);
     }
   }, [colorExpr, outlineColorExpr, outlineWidthExpr, ready]);
-
-  // Physical assets live in their own layer, separate from rooms/areas.
-  useEffect(() => {
-    const map = mapRef.current;
-    if (!map || !readyRef.current) return;
-    assetMarkersRef.current.forEach((m) => m.remove());
-    assetMarkersRef.current = [];
-
-    for (const asset of assets) {
-      const el = document.createElement("div");
-      const color = asset.color || "#64748b";
-      const rotation = Number(asset.rotation ?? 0);
-      const scale = Number(asset.scale ?? 1);
-      el.dataset.kind = "asset";
-      el.title = asset.label || asset.type;
-      el.style.cssText = [
-        "pointer-events:none",
-        "width:104px",
-        "height:104px",
-        "transform:translate(-50%,-88%)",
-        "transform-style:preserve-3d",
-        "filter:drop-shadow(0 12px 10px rgba(15,23,42,0.28))",
-      ].join(";");
-      el.innerHTML = `<div style="width:104px;height:104px;display:flex;align-items:flex-end;justify-content:center;transform:rotate(${rotation}deg)">${assetModelHtml(asset, color, scale)}</div>`;
-      assetMarkersRef.current.push(new maplibregl.Marker({ element: el }).setLngLat(toLngLat(asset.x, asset.y)).addTo(map));
-    }
-
-    const applyLod = () => {
-      const show = map.getZoom() >= fitZoomRef.current + 0.45;
-      for (const marker of assetMarkersRef.current) {
-        marker.getElement().style.display = show ? "" : "none";
-      }
-    };
-    applyLod();
-    map.on("zoom", applyLod);
-    return () => {
-      map.off("zoom", applyLod);
-      assetMarkersRef.current.forEach((m) => m.remove());
-      assetMarkersRef.current = [];
-    };
-  }, [assets, toLngLat, ready]);
 
   // ── Markers: zone pills + amenity badges + logos + room labels ─────────────
   useEffect(() => {
