@@ -1112,18 +1112,17 @@ const BuildingMap = forwardRef<BuildingMapHandle, Props>(function BuildingMap(
       addMarker(ll, el);
     }
 
-    // 3) Zoom-based LOD: show room labels when zoomed in (the default view), and
-    //    swap to zone pills only when zoomed out to the whole floor.
+    // 3) Zoom-based LOD: room labels remain useful landmarks during routing,
+    //    but disappear when zoomed out far enough that they would overlap.
     const applyLod = () => {
       const fz = fitZoomRef.current;
       const z = map.getZoom();
-      const routeActive = routeSteps.length >= 2;
       const showRooms = z >= fz + 0.8;   // default close view is fz+1.7 → rooms visible
       const showZones = z < fz + 1.3;    // zoomed out → zone pills carry the map
       for (const m of labelMarkersRef.current) {
         const el = m.getElement();
         const kind = el.dataset.kind;
-        if (kind === "room" || kind === "logo") el.style.display = !routeActive && showRooms ? "" : "none";
+        if (kind === "room" || kind === "logo") el.style.display = showRooms ? "" : "none";
         else if (kind === "zone") el.style.display = showZones ? "" : "none";
         // amenity + highlight always visible
       }

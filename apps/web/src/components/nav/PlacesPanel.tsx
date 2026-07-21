@@ -6,6 +6,8 @@ import { categoryGlyph, isOpenSpace } from "@/lib/category-icons";
 interface StoreLite {
   id: string; name: string; nameAr: string; category: string;
   zone?: string | null; zoneAr?: string | null;
+  navNodeId?: string | null;
+  navLinks?: Array<{ navNodeId: string }>;
 }
 interface FloorLite {
   id: string; name: string; nameAr?: string; level: number; stores: StoreLite[];
@@ -28,6 +30,7 @@ export default function PlacesPanel({ floors, onSelect }: Props) {
       .sort((a, b) => b.level - a.level)
       .map((f) => {
         const stores = f.stores
+          .filter((s) => !!s.navNodeId || (s.navLinks?.length ?? 0) > 0)
           .filter((s) => !isOpenSpace(s.category))
           .filter((s) => !ql || s.name.toLowerCase().includes(ql) || s.nameAr.includes(q.trim()))
           .sort((a, b) => a.name.localeCompare(b.name));

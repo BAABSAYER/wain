@@ -44,6 +44,8 @@ interface StoreData {
   id: string; name: string; nameAr: string;
   polygon: Array<{ x: number; y: number }>;
   extrudeHeight: number; color: string; category: string;
+  navNodeId?: string | null;
+  navLinks?: Array<{ navNodeId: string }>;
 }
 interface NavNodeData { id: string; x: number; y: number; z: number; floorId: string; }
 interface AssetData {
@@ -234,12 +236,18 @@ export default function NavPage() {
     setSelectedStore(null);
   };
 
-  // Picked a place from the Places directory → switch to its floor + open detail
+  // Preview same-floor places; cross-floor selections start from the scan floor.
   const handlePlaceFromList = (floorId: string, store: { id: string }) => {
     const floor = building?.floors.find((f) => f.id === floorId);
     const full = floor?.stores.find((s) => s.id === store.id) ?? null;
-    if (floor && floor.id !== currentFloor?.id) setCurrentFloor(floor);
-    setSelectedStore(full);
+    if (!full) return;
+
+    if (floor?.id !== currentFloor?.id) {
+      setSelectedStore(null);
+      computeRoute(full.id, full.name, full.nameAr);
+    } else {
+      setSelectedStore(full);
+    }
     setActiveTab("map");
   };
 
