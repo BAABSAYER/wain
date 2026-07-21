@@ -176,11 +176,10 @@ export default function MapCanvas({
   const handleStageClick = useCallback((e: any) => {
     if (isSpacePanning) return;
     const clickedEmpty = e.target === stageRef.current || e.target.getClassName?.() === "Stage" || e.target.attrs?.id === "bg-rect";
-    if (clickedEmpty && tool === "select") {
-      setSelected(null);
+    if (tool === "select") {
+      if (clickedEmpty) setSelected(null);
       return;
     }
-    if (!clickedEmpty) return;
 
     const raw = getStagePos();
     const pos = tool === "node" ? snapToNavLine(raw) : snapToGrid(raw);
@@ -238,17 +237,21 @@ export default function MapCanvas({
   }, [isSpacePanning, tool, activePolygon, commitPolygon, pushSnapshot]);
 
   const handleNodeClick = useCallback((nodeId: string, e: any) => {
-    e.cancelBubble = true;
-    if (isSpacePanning) return;
+    if (isSpacePanning) {
+      e.cancelBubble = true;
+      return;
+    }
     // Link mode wins over every other tool: clicking a node toggles its
     // membership in the active store's link list. Stays in link mode until
     // the user presses Esc or hits the toolbar button again.
     if (linkModeStoreId) {
+      e.cancelBubble = true;
       pushSnapshot();
       toggleStoreNavLink(linkModeStoreId, nodeId);
       return;
     }
     if (tool === "edge") {
+      e.cancelBubble = true;
       if (!edgeStart) setEdgeStart(nodeId);
       else if (edgeStart !== nodeId) {
         pushSnapshot();
@@ -257,14 +260,19 @@ export default function MapCanvas({
       }
       return;
     }
-    if (tool === "qr") { onCreateQR?.(nodeId); return; }
-    if (tool === "select") setSelected(nodeId, "node");
+    if (tool === "qr") { e.cancelBubble = true; onCreateQR?.(nodeId); return; }
+    if (tool === "select") { e.cancelBubble = true; setSelected(nodeId, "node"); }
   }, [isSpacePanning, tool, edgeStart, addEdge, setSelected, onCreateQR, pushSnapshot, linkModeStoreId, toggleStoreNavLink]);
 
   const handleEdgeClick = useCallback((edgeId: string, e: any) => {
-    e.cancelBubble = true;
-    if (isSpacePanning) return;
-    if (tool === "select") setSelected(edgeId, "edge");
+    if (isSpacePanning) {
+      e.cancelBubble = true;
+      return;
+    }
+    if (tool === "select") {
+      e.cancelBubble = true;
+      setSelected(edgeId, "edge");
+    }
   }, [isSpacePanning, tool, setSelected]);
 
   const handleNodeDragMove = useCallback((nodeId: string, e: any) => {
@@ -274,9 +282,12 @@ export default function MapCanvas({
   }, [snapToNavLine, updateNode]);
 
   const handleStoreClick = useCallback((storeId: string, e: any) => {
-    e.cancelBubble = true;
-    if (isSpacePanning) return;
+    if (isSpacePanning) {
+      e.cancelBubble = true;
+      return;
+    }
     if (tool !== "select") return;
+    e.cancelBubble = true;
     // Shift-click adds (or removes) the room from a multi-room selection so
     // several can be grouped at once via the bulk-edit panel.
     if (e.evt?.shiftKey) toggleExtraSelection(storeId);
@@ -843,8 +854,14 @@ export default function MapCanvas({
                 onDragEnd={(e: any) => handleAssetDragEnd(asset.id, e)}
                 onTransformStart={() => { pushSnapshot(); }}
                 onTransformEnd={(e: any) => handleAssetTransformEnd(asset.id, e)}
-                onClick={(e: any) => { e.cancelBubble = true; if (!isSpacePanning) setSelected(asset.id, "asset"); }}
-                onTap={(e: any) => { e.cancelBubble = true; if (!isSpacePanning) setSelected(asset.id, "asset"); }}
+                onClick={(e: any) => {
+                  if (isSpacePanning || tool === "select") e.cancelBubble = true;
+                  if (!isSpacePanning && tool === "select") setSelected(asset.id, "asset");
+                }}
+                onTap={(e: any) => {
+                  if (isSpacePanning || tool === "select") e.cancelBubble = true;
+                  if (!isSpacePanning && tool === "select") setSelected(asset.id, "asset");
+                }}
                 onMouseEnter={() => tool === "select" && !isSpacePanning && setCursor("move")}
                 onMouseLeave={() => tool === "select" && !isSpacePanning && setCursor("crosshair")}
               >
