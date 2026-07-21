@@ -95,7 +95,13 @@ export type AssetType =
   | "kiosk"
   | "atm"
   | "barrier"
-  | "sign";
+  | "sign"
+  | "chair"
+  | "sofa"
+  | "table"
+  | "trashcan"
+  | "floor_lamp"
+  | "potted_plant";
 
 export interface Asset {
   id: string;

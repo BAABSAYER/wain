@@ -235,7 +235,6 @@ interface AssetModelPreset {
 }
 
 const ASSET_MODEL_PRESETS: Record<string, AssetModelPreset> = {
-  door: { url: "/models/map-assets/door.glb", footprintMeters: 1.8 },
   tree: { url: "/models/map-assets/tree.glb", footprintMeters: 3.6 },
   elevator: { url: "/models/map-assets/elevator.glb", footprintMeters: 2.4 },
   stairs: { url: "/models/map-assets/stairs.glb", footprintMeters: 3.2 },
@@ -251,6 +250,12 @@ const ASSET_MODEL_PRESETS: Record<string, AssetModelPreset> = {
   atm: { url: "/models/map-assets/atm.glb", footprintMeters: 1.4 },
   barrier: { url: "/models/map-assets/barrier.glb", footprintMeters: 2.6 },
   sign: { url: "/models/map-assets/sign.glb", footprintMeters: 2.2 },
+  chair: { url: "/models/map-assets/chair.glb", footprintMeters: 0.8 },
+  sofa: { url: "/models/map-assets/sofa.glb", footprintMeters: 2.2 },
+  table: { url: "/models/map-assets/table.glb", footprintMeters: 1.4 },
+  trashcan: { url: "/models/map-assets/trashcan.glb", footprintMeters: 0.65 },
+  floor_lamp: { url: "/models/map-assets/floor-lamp.glb", footprintMeters: 0.65 },
+  potted_plant: { url: "/models/map-assets/potted-plant.glb", footprintMeters: 0.9 },
 };
 
 const assetModelLoader = new GLTFLoader();
@@ -280,7 +285,116 @@ function loadAssetModel(url: string) {
   return request;
 }
 
+const MAP_SYMBOL_TYPES = new Set(["door", "stairs", "escalator", "reception", "security", "bench"]);
+
+function symbolMaterial(color: string) {
+  return new THREE.MeshStandardMaterial({ color, roughness: 0.72, metalness: 0.08 });
+}
+
+function addSymbolBox(
+  group: THREE.Group,
+  size: [number, number, number],
+  position: [number, number, number],
+  color: string,
+  rotationY = 0,
+) {
+  const mesh = new THREE.Mesh(new THREE.BoxGeometry(...size), symbolMaterial(color));
+  mesh.position.set(...position);
+  mesh.rotation.y = rotationY;
+  mesh.castShadow = true;
+  mesh.receiveShadow = true;
+  group.add(mesh);
+}
+
+function addDoorArrow(group: THREE.Group) {
+  const shape = new THREE.Shape();
+  shape.moveTo(0, 0.9);
+  shape.lineTo(0.55, 0.25);
+  shape.lineTo(0.2, 0.25);
+  shape.lineTo(0.2, -0.9);
+  shape.lineTo(-0.2, -0.9);
+  shape.lineTo(-0.2, 0.25);
+  shape.lineTo(-0.55, 0.25);
+  shape.closePath();
+
+  const geometry = new THREE.ExtrudeGeometry(shape, {
+    depth: 0.08,
+    bevelEnabled: true,
+    bevelSegments: 1,
+    bevelSize: 0.025,
+    bevelThickness: 0.025,
+  });
+  geometry.rotateX(-Math.PI / 2);
+  geometry.computeVertexNormals();
+
+  const arrow = new THREE.Mesh(geometry, symbolMaterial("#6b7280"));
+  arrow.position.y = 0.025;
+  arrow.castShadow = true;
+  arrow.receiveShadow = true;
+  group.add(arrow);
+}
+
+function addSecuritySymbol(group: THREE.Group) {
+  const shape = new THREE.Shape();
+  shape.moveTo(-0.62, -0.45);
+  shape.lineTo(0.62, -0.45);
+  shape.lineTo(0.48, 0.45);
+  shape.lineTo(-0.48, 0.45);
+  shape.closePath();
+  const geometry = new THREE.ExtrudeGeometry(shape, { depth: 0.1, bevelEnabled: false });
+  geometry.rotateX(-Math.PI / 2);
+  const body = new THREE.Mesh(geometry, symbolMaterial("#475569"));
+  body.position.y = 0.02;
+  group.add(body);
+  addSymbolBox(group, [0.48, 0.08, 0.36], [0, 0.13, -0.04], "#ffffff");
+  const knob = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 0.08, 20), symbolMaterial("#475569"));
+  knob.position.set(0, 0.08, -0.67);
+  group.add(knob);
+}
+
+function createMapSymbol(asset: AssetData) {
+  const symbol = new THREE.Group();
+  switch (asset.type) {
+    case "door":
+      addDoorArrow(symbol);
+      break;
+    case "stairs":
+      for (let i = 0; i < 4; i += 1) {
+        addSymbolBox(symbol, [0.72, 0.08, 0.22], [-0.42 + i * 0.28, 0.04, 0.42 - i * 0.28], "#16a34a");
+      }
+      break;
+    case "escalator":
+      addSymbolBox(symbol, [1.65, 0.1, 0.3], [0, 0.05, 0], "#0d9488", -0.5);
+      break;
+    case "reception":
+      addSymbolBox(symbol, [1.55, 0.16, 0.65], [0, 0.08, 0.18], "#0284c7");
+      addSymbolBox(symbol, [0.74, 0.11, 0.48], [0, 0.075, -0.46], "#0284c7");
+      addSymbolBox(symbol, [0.56, 0.13, 0.3], [0, 0.13, -0.46], "#ffffff");
+      break;
+    case "security":
+      addSecuritySymbol(symbol);
+      break;
+    case "bench":
+      addSymbolBox(symbol, [1.55, 0.13, 0.28], [0, 0.22, -0.18], "#92400e");
+      addSymbolBox(symbol, [1.35, 0.13, 0.34], [0, 0.1, 0.2], "#a16207");
+      addSymbolBox(symbol, [0.11, 0.26, 0.11], [-0.48, 0.13, 0.35], "#475569");
+      addSymbolBox(symbol, [0.11, 0.26, 0.11], [0.48, 0.13, 0.35], "#475569");
+      break;
+  }
+
+  const holder = new THREE.Group();
+  const requestedScale = Math.max(0.25, Math.min(asset.scale ?? 1, 8));
+  symbol.scale.setScalar(requestedScale);
+  holder.rotation.y = -((asset.rotation ?? 0) * Math.PI) / 180;
+  holder.add(symbol);
+  return holder;
+}
+
 async function createLoadedAssetObject(asset: AssetData) {
+  if ((!asset.modelUrl && MAP_SYMBOL_TYPES.has(asset.type)) || asset.type === "door") {
+    return createMapSymbol(asset);
+  }
+
   const preset = ASSET_MODEL_PRESETS[asset.type] ?? ASSET_MODEL_PRESETS.sign;
   const source = await loadAssetModel(asset.modelUrl || preset.url);
   const model = source.clone(true);
@@ -289,7 +403,7 @@ async function createLoadedAssetObject(asset: AssetData) {
   const bounds = new THREE.Box3().setFromObject(model);
   const size = bounds.getSize(new THREE.Vector3());
   const horizontalSize = Math.max(size.x, size.z, 0.001);
-  const requestedScale = Math.max(0.35, Math.min(asset.scale ?? 1, 4));
+  const requestedScale = Math.max(0.25, Math.min(asset.scale ?? 1, 8));
   const fittedScale = (preset.footprintMeters / horizontalSize) * requestedScale;
   model.scale.setScalar(fittedScale);
 

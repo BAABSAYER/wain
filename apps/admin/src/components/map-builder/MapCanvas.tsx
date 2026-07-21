@@ -64,7 +64,9 @@ export default function MapCanvas({
   // Line via a Konva Transformer. We keep a ref per store so the Transformer
   // can re-attach when the selection changes without rebuilding the layer.
   const lineRefs = useRef<Record<string, any>>({});
+  const assetRefs = useRef<Record<string, any>>({});
   const transformerRef = useRef<any>(null);
+  const assetTransformerRef = useRef<any>(null);
   const [edgeStart, setEdgeStart] = useState<string | null>(null);
   const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
 
@@ -187,7 +189,7 @@ export default function MapCanvas({
       pushSnapshot();
       addAsset({
         id: nanoid(),
-        type: preset.id,
+        type: preset.type,
         label: preset.label,
         x: pos.x,
         y: pos.y,
@@ -195,6 +197,7 @@ export default function MapCanvas({
         rotation: 0,
         scale: preset.defaultScale ?? 1,
         color: preset.color,
+        modelUrl: preset.modelUrl ?? null,
       });
       return;
     }
@@ -508,6 +511,16 @@ export default function MapCanvas({
     tr.getLayer()?.batchDraw();
   }, [selectedId, selectedKind, extraSelectedIds, stores]);
 
+  useEffect(() => {
+    const tr = assetTransformerRef.current;
+    if (!tr) return;
+    const group = selectedKind === "asset" && selectedId
+      ? assetRefs.current[selectedId]
+      : null;
+    tr.nodes(group ? [group] : []);
+    tr.getLayer()?.batchDraw();
+  }, [selectedId, selectedKind, assets]);
+
   // Convert the Line's transient scale/rotation/translation back into polygon
   // points. The DB stores final polygon vertices, so rotation is baked into the
   // geometry instead of saved as a separate field.
@@ -556,6 +569,22 @@ export default function MapCanvas({
   const handleAssetDragEnd = useCallback((assetId: string, e: any) => {
     updateAsset(assetId, { x: snap(e.target.x()), y: snap(e.target.y()) });
   }, [updateAsset, snap]);
+
+  const handleAssetTransformEnd = useCallback((assetId: string, e: any) => {
+    const node = e.target;
+    const asset = assets.find((item) => item.id === assetId);
+    if (!asset) return;
+    const transformScale = Math.max(Math.abs(node.scaleX()), Math.abs(node.scaleY()));
+    const nextScale = Math.max(0.25, Math.min((asset.scale || 1) * transformScale, 8));
+    const rotation = ((node.rotation() % 360) + 360) % 360;
+    node.scale({ x: 1, y: 1 });
+    updateAsset(assetId, {
+      x: snap(node.x()),
+      y: snap(node.y()),
+      rotation,
+      scale: Number(nextScale.toFixed(2)),
+    });
+  }, [assets, updateAsset, snap]);
 
   // Cursor handling for hover affordances (move on shape, resize on vertex)
   const setCursor = (cur: string) => {
@@ -743,12 +772,18 @@ export default function MapCanvas({
             return (
               <Group
                 key={asset.id}
+                ref={(node: any) => {
+                  if (node) assetRefs.current[asset.id] = node;
+                  else delete assetRefs.current[asset.id];
+                }}
                 x={asset.x}
                 y={asset.y}
                 rotation={asset.rotation}
                 draggable={tool === "select"}
                 onDragStart={() => { pushSnapshot(); }}
                 onDragEnd={(e: any) => handleAssetDragEnd(asset.id, e)}
+                onTransformStart={() => { pushSnapshot(); }}
+                onTransformEnd={(e: any) => handleAssetTransformEnd(asset.id, e)}
                 onClick={(e: any) => { e.cancelBubble = true; setSelected(asset.id, "asset"); }}
                 onTap={(e: any) => { e.cancelBubble = true; setSelected(asset.id, "asset"); }}
                 onMouseEnter={() => tool === "select" && setCursor("move")}
@@ -771,7 +806,7 @@ export default function MapCanvas({
                   <Line
                     points={[0, -size * 0.55, size * 0.42, -size * 0.08, size * 0.16, -size * 0.08, size * 0.16, size * 0.55, -size * 0.16, size * 0.55, -size * 0.16, -size * 0.08, -size * 0.42, -size * 0.08]}
                     closed
-                    fill={color}
+                    fill="#6b7280"
                     stroke={isSel ? "#2563eb" : "#ffffff"}
                     strokeWidth={isSel ? 3 : 1.5}
                   />
@@ -834,6 +869,34 @@ export default function MapCanvas({
                     <Rect x={-size * 0.48} y={size * 0.04} width={size * 0.96} height={size * 0.18} fill={color} cornerRadius={2} />
                     <Rect x={-size * 0.36} y={size * 0.18} width={size * 0.08} height={size * 0.2} fill="#475569" />
                     <Rect x={size * 0.28} y={size * 0.18} width={size * 0.08} height={size * 0.2} fill="#475569" />
+                  </>
+                ) : asset.type === "chair" ? (
+                  <>
+                    <Rect x={-size * 0.32} y={-size * 0.28} width={size * 0.64} height={size * 0.64} fill={color} stroke={isSel ? "#2563eb" : "#ffffff"} strokeWidth={isSel ? 3 : 1.5} cornerRadius={4} />
+                    <Rect x={-size * 0.38} y={-size * 0.5} width={size * 0.76} height={size * 0.18} fill="#334155" cornerRadius={3} />
+                  </>
+                ) : asset.type === "sofa" ? (
+                  <>
+                    <Rect x={-size * 0.62} y={-size * 0.34} width={size * 1.24} height={size * 0.72} fill={color} stroke={isSel ? "#2563eb" : "#ffffff"} strokeWidth={isSel ? 3 : 1.5} cornerRadius={7} />
+                    <Rect x={-size * 0.54} y={-size * 0.42} width={size * 1.08} height={size * 0.16} fill="#334155" cornerRadius={3} />
+                  </>
+                ) : asset.type === "table" ? (
+                  <Circle x={0} y={0} radius={size * 0.48} fill={color} stroke={isSel ? "#2563eb" : "#ffffff"} strokeWidth={isSel ? 3 : 1.5} />
+                ) : asset.type === "trashcan" ? (
+                  <>
+                    <Circle x={0} y={0} radius={size * 0.34} fill={color} stroke={isSel ? "#2563eb" : "#ffffff"} strokeWidth={isSel ? 3 : 1.5} />
+                    <Line points={[-size * 0.22, -size * 0.1, size * 0.22, -size * 0.1]} stroke="#cbd5e1" strokeWidth={2} />
+                  </>
+                ) : asset.type === "floor_lamp" ? (
+                  <>
+                    <Circle x={0} y={size * 0.3} radius={size * 0.2} fill="#475569" />
+                    <Circle x={0} y={-size * 0.18} radius={size * 0.34} fill="#fde68a" stroke={isSel ? "#2563eb" : color} strokeWidth={isSel ? 3 : 1.5} />
+                  </>
+                ) : asset.type === "potted_plant" ? (
+                  <>
+                    <Circle x={0} y={size * 0.2} radius={size * 0.28} fill="#a16207" />
+                    <Circle x={-size * 0.13} y={-size * 0.12} radius={size * 0.3} fill={color} stroke={isSel ? "#2563eb" : "#ffffff"} strokeWidth={isSel ? 3 : 1.5} />
+                    <Circle x={size * 0.16} y={-size * 0.2} radius={size * 0.24} fill="#22c55e" />
                   </>
                 ) : asset.type === "barrier" ? (
                   <>
@@ -1044,6 +1107,25 @@ export default function MapCanvas({
             anchorStrokeWidth={2}
             borderStroke="#2563eb"
             borderDash={[6, 4]}
+          />
+          <Transformer
+            ref={assetTransformerRef}
+            rotateEnabled
+            keepRatio
+            centeredScaling
+            rotationSnaps={[0, 15, 30, 45, 60, 90, 120, 135, 150, 180, 210, 225, 240, 270, 300, 315, 330, 345]}
+            rotationSnapTolerance={5}
+            enabledAnchors={["top-left", "top-right", "bottom-left", "bottom-right"]}
+            boundBoxFunc={(_oldBox: any, newBox: any) => {
+              if (Math.abs(newBox.width) < 12 || Math.abs(newBox.height) < 12) return _oldBox;
+              return newBox;
+            }}
+            anchorSize={10}
+            anchorStroke="#0f766e"
+            anchorFill="#ffffff"
+            anchorStrokeWidth={2}
+            borderStroke="#0f766e"
+            borderDash={[5, 4]}
           />
         </Layer>
       </Stage>

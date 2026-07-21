@@ -5,8 +5,9 @@ on an external asset host.
 
 Sources:
 
-- Kenney Furniture Kit: door, stairs, escalator placeholder, reception desk,
-  security desk, dining table, bench, and planter.
+- Kenney Furniture Kit: stairs, escalator, reception desk, security desk,
+  dining table, several bench, chair, sofa, table, floor-lamp and potted-plant
+  variants, planter, and trash bin.
 - Kenney Nature Kit: tree and information sign.
 - Kenney City Kit (Roads): parking sign, directional sign, and barrier.
 
@@ -27,3 +28,8 @@ Attribution and are included with attribution here:
 
 The `modelUrl` value on an asset can override these defaults with another GLB or
 glTF file served by the application.
+
+Map-symbol placements use small procedural 3D glyphs that match the admin
+canvas. Furniture choices use the bundled GLB path in `modelUrl`, which allows
+several models to share one logical asset type. Door placements always use the
+direction arrow so their rotation communicates entrance/exit direction clearly.

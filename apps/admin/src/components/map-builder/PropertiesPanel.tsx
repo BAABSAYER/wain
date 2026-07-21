@@ -1,7 +1,7 @@
 "use client";
 import { useMapBuilderStore } from "@/store/map-builder";
 import BulkEditPanel from "./BulkEditPanel";
-import { ASSET_PRESETS, findAssetPreset } from "./asset-presets";
+import { ASSET_PRESETS, findAssetPreset, findAssetPresetForAsset } from "./asset-presets";
 import type { AssetType, StoreCategory } from "@wain/types";
 
 const CATEGORIES: StoreCategory[] = [
@@ -294,7 +294,7 @@ export default function PropertiesPanel({ floors = [], currentFloorId }: Props) 
   }
 
   if (asset) {
-    const preset = findAssetPreset(asset.type);
+    const preset = findAssetPresetForAsset(asset.type, asset.modelUrl);
     return (
       <div className="p-4 flex flex-col gap-4">
         <div className="flex items-center justify-between">
@@ -305,21 +305,28 @@ export default function PropertiesPanel({ floors = [], currentFloorId }: Props) 
         </div>
 
         <label className="flex flex-col gap-1">
-          <span className="text-xs text-slate-500 font-medium">Type</span>
+          <span className="text-xs text-slate-500 font-medium">Catalog item</span>
           <select
             className="bg-white border border-slate-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 rounded px-3 py-1.5 text-sm text-slate-900 outline-none"
-            value={asset.type}
+            value={preset?.id ?? ""}
             onChange={(e) => {
               const next = findAssetPreset(e.target.value);
+              if (!next) return;
               updateAsset(asset.id, {
-                type: e.target.value as AssetType,
-                label: asset.label || next?.label || "",
-                color: next?.color ?? asset.color,
-                scale: asset.scale || next?.defaultScale || 1,
+                type: next.type as AssetType,
+                label: next.label,
+                color: next.color,
+                scale: (next.defaultScale ?? asset.scale) || 1,
+                modelUrl: next.modelUrl ?? null,
               });
             }}
           >
-            {ASSET_PRESETS.map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
+            <optgroup label="Map Symbols">
+              {ASSET_PRESETS.filter((p) => p.group === "symbol").map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
+            </optgroup>
+            <optgroup label="3D Objects & Furniture">
+              {ASSET_PRESETS.filter((p) => p.group === "furniture").map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
+            </optgroup>
           </select>
         </label>
 
@@ -345,31 +352,55 @@ export default function PropertiesPanel({ floors = [], currentFloorId }: Props) 
             <span className="text-xs text-slate-500 font-medium">Rotation</span>
             <input type="number" className="bg-white border border-slate-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 rounded px-3 py-1.5 text-sm text-slate-900 outline-none" value={Math.round(asset.rotation)} onChange={(e) => updateAsset(asset.id, { rotation: Number(e.target.value) })} />
           </label>
-          <label className="flex flex-col gap-1">
-            <span className="text-xs text-slate-500 font-medium">Scale</span>
-            <input type="number" min={0.1} step={0.1} className="bg-white border border-slate-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 rounded px-3 py-1.5 text-sm text-slate-900 outline-none" value={asset.scale} onChange={(e) => updateAsset(asset.id, { scale: Number(e.target.value) })} />
-          </label>
         </div>
 
-        <label className="flex flex-col gap-1">
-          <span className="text-xs text-slate-500 font-medium">Color</span>
-          <input
-            type="color"
-            className="h-9 bg-white border border-slate-300 rounded px-1"
-            value={asset.color ?? preset?.color ?? "#64748b"}
-            onChange={(e) => updateAsset(asset.id, { color: e.target.value })}
-          />
+        <label className="flex flex-col gap-1.5">
+          <span className="text-xs text-slate-500 font-medium">Size</span>
+          <div className="flex items-center gap-3">
+            <input
+              type="range"
+              min={0.25}
+              max={8}
+              step={0.05}
+              className="min-w-0 flex-1 accent-blue-600"
+              value={Math.max(0.25, Math.min(asset.scale || 1, 8))}
+              onChange={(e) => updateAsset(asset.id, { scale: Number(e.target.value) })}
+            />
+            <input
+              type="number"
+              min={0.25}
+              max={8}
+              step={0.05}
+              className="w-20 bg-white border border-slate-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 rounded px-2 py-1.5 text-sm text-slate-900 outline-none"
+              value={asset.scale}
+              onChange={(e) => updateAsset(asset.id, { scale: Math.max(0.25, Math.min(Number(e.target.value) || 1, 8)) })}
+            />
+          </div>
         </label>
 
-        <label className="flex flex-col gap-1">
-          <span className="text-xs text-slate-500 font-medium">Model URL</span>
-          <input
-            className="bg-white border border-slate-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 rounded px-3 py-1.5 text-sm text-slate-900 outline-none font-mono text-xs"
-            placeholder="Optional GLB/GLTF URL"
-            value={asset.modelUrl ?? ""}
-            onChange={(e) => updateAsset(asset.id, { modelUrl: e.target.value || null })}
-          />
-        </label>
+        {asset.type !== "door" && (
+          <>
+            <label className="flex flex-col gap-1">
+              <span className="text-xs text-slate-500 font-medium">Color</span>
+              <input
+                type="color"
+                className="h-9 bg-white border border-slate-300 rounded px-1"
+                value={asset.color ?? preset?.color ?? "#64748b"}
+                onChange={(e) => updateAsset(asset.id, { color: e.target.value })}
+              />
+            </label>
+
+            <label className="flex flex-col gap-1">
+              <span className="text-xs text-slate-500 font-medium">Model URL</span>
+              <input
+                className="bg-white border border-slate-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 rounded px-3 py-1.5 text-sm text-slate-900 outline-none font-mono text-xs"
+                placeholder="Optional GLB/GLTF URL"
+                value={asset.modelUrl ?? ""}
+                onChange={(e) => updateAsset(asset.id, { modelUrl: e.target.value || null })}
+              />
+            </label>
+          </>
+        )}
 
         <label className="flex flex-col gap-1">
           <span className="text-xs text-slate-500 font-medium">Linked nav node</span>
