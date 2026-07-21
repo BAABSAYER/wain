@@ -674,9 +674,8 @@ const BuildingMap = forwardRef<BuildingMapHandle, Props>(function BuildingMap(
   const outlineWidthExpr = useMemo(() => ([
     "case",
     ["==", ["get", "id"], destinationId ?? "__none__"], 3.4,
-    ["==", ["get", "id"], selectedId ?? "__none__"], 3.2,
     0,
-  ] as any), [destinationId, selectedId]);
+  ] as any), [destinationId]);
 
   // ── Initialise the map once ────────────────────────────────────────────────
   useEffect(() => {
