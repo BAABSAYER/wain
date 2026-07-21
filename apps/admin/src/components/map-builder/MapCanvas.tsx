@@ -69,6 +69,8 @@ export default function MapCanvas({
   const assetTransformerRef = useRef<any>(null);
   const [edgeStart, setEdgeStart] = useState<string | null>(null);
   const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
+  const [isSpacePanning, setIsSpacePanning] = useState(false);
+  const [isStageDragging, setIsStageDragging] = useState(false);
 
   const {
     tool, selectedId, selectedKind, extraSelectedIds, stores, assets, nodes, edges,
@@ -172,6 +174,7 @@ export default function MapCanvas({
   }, []);
 
   const handleStageClick = useCallback((e: any) => {
+    if (isSpacePanning) return;
     const clickedEmpty = e.target === stageRef.current || e.target.getClassName?.() === "Stage" || e.target.attrs?.id === "bg-rect";
     if (clickedEmpty && tool === "select") {
       setSelected(null);
@@ -217,9 +220,10 @@ export default function MapCanvas({
       // Keep the preset selected so the user can drop several in a row.
       return;
     }
-  }, [tool, activePreset, activeAssetPreset, getStagePos, addPolygonPoint, addNode, addAsset, addPresetStore, setSelected, pushSnapshot, snapToGrid, snapToNavLine]);
+  }, [isSpacePanning, tool, activePreset, activeAssetPreset, getStagePos, addPolygonPoint, addNode, addAsset, addPresetStore, setSelected, pushSnapshot, snapToGrid, snapToNavLine]);
 
   const handleStageDblClick = useCallback(() => {
+    if (isSpacePanning) return;
     if (tool === "polygon" && activePolygon.length >= 3) {
       pushSnapshot();
       commitPolygon({
@@ -231,10 +235,11 @@ export default function MapCanvas({
         extrudeHeight: 5,
       });
     }
-  }, [tool, activePolygon, commitPolygon, pushSnapshot]);
+  }, [isSpacePanning, tool, activePolygon, commitPolygon, pushSnapshot]);
 
   const handleNodeClick = useCallback((nodeId: string, e: any) => {
     e.cancelBubble = true;
+    if (isSpacePanning) return;
     // Link mode wins over every other tool: clicking a node toggles its
     // membership in the active store's link list. Stays in link mode until
     // the user presses Esc or hits the toolbar button again.
@@ -254,12 +259,13 @@ export default function MapCanvas({
     }
     if (tool === "qr") { onCreateQR?.(nodeId); return; }
     if (tool === "select") setSelected(nodeId, "node");
-  }, [tool, edgeStart, addEdge, setSelected, onCreateQR, pushSnapshot, linkModeStoreId, toggleStoreNavLink]);
+  }, [isSpacePanning, tool, edgeStart, addEdge, setSelected, onCreateQR, pushSnapshot, linkModeStoreId, toggleStoreNavLink]);
 
   const handleEdgeClick = useCallback((edgeId: string, e: any) => {
     e.cancelBubble = true;
+    if (isSpacePanning) return;
     if (tool === "select") setSelected(edgeId, "edge");
-  }, [tool, setSelected]);
+  }, [isSpacePanning, tool, setSelected]);
 
   const handleNodeDragMove = useCallback((nodeId: string, e: any) => {
     const pos = snapToNavLine({ x: e.target.x(), y: e.target.y() }, nodeId);
@@ -269,18 +275,20 @@ export default function MapCanvas({
 
   const handleStoreClick = useCallback((storeId: string, e: any) => {
     e.cancelBubble = true;
+    if (isSpacePanning) return;
     if (tool !== "select") return;
     // Shift-click adds (or removes) the room from a multi-room selection so
     // several can be grouped at once via the bulk-edit panel.
     if (e.evt?.shiftKey) toggleExtraSelection(storeId);
     else setSelected(storeId, "store");
-  }, [tool, setSelected, toggleExtraSelection]);
+  }, [isSpacePanning, tool, setSelected, toggleExtraSelection]);
 
   const handleMouseMove = useCallback(() => {
+    if (isSpacePanning) return;
     if (tool === "polygon" || (tool === "edge" && edgeStart)) {
       setMousePos(getStagePos());
     }
-  }, [tool, edgeStart, getStagePos]);
+  }, [isSpacePanning, tool, edgeStart, getStagePos]);
 
   // Wheel zoom (anchored at pointer)
   const handleWheel = useCallback((e: any) => {
@@ -299,6 +307,42 @@ export default function MapCanvas({
       x: pointer.x - mousePt.x * newScale,
       y: pointer.y - mousePt.y * newScale,
     });
+  }, []);
+
+  // Holding Space temporarily turns the current tool into a hand tool. The
+  // drawing state stays intact, so a long polygon can continue after panning.
+  useEffect(() => {
+    const isTypingTarget = (target: EventTarget | null) => {
+      const element = target as HTMLElement | null;
+      return !!element && (
+        element.tagName === "INPUT"
+        || element.tagName === "TEXTAREA"
+        || element.isContentEditable
+      );
+    };
+    const stopSpacePan = () => {
+      setIsSpacePanning(false);
+      setIsStageDragging(false);
+    };
+    const handleSpaceDown = (e: KeyboardEvent) => {
+      if (e.code !== "Space" || isTypingTarget(e.target)) return;
+      e.preventDefault();
+      if (!e.repeat) setIsSpacePanning(true);
+    };
+    const handleSpaceUp = (e: KeyboardEvent) => {
+      if (e.code !== "Space") return;
+      e.preventDefault();
+      stopSpacePan();
+    };
+
+    window.addEventListener("keydown", handleSpaceDown);
+    window.addEventListener("keyup", handleSpaceUp);
+    window.addEventListener("blur", stopSpacePan);
+    return () => {
+      window.removeEventListener("keydown", handleSpaceDown);
+      window.removeEventListener("keyup", handleSpaceUp);
+      window.removeEventListener("blur", stopSpacePan);
+    };
   }, []);
 
   // ── Keyboard shortcuts (Word / Canva-style) ─────────────────────────────
@@ -505,21 +549,21 @@ export default function MapCanvas({
     const tr = transformerRef.current;
     if (!tr) return;
     const isSingleStoreSelection =
-      selectedKind === "store" && !!selectedId && extraSelectedIds.length === 0;
+      !isSpacePanning && selectedKind === "store" && !!selectedId && extraSelectedIds.length === 0;
     const ln = isSingleStoreSelection ? lineRefs.current[selectedId!] : null;
     tr.nodes(ln ? [ln] : []);
     tr.getLayer()?.batchDraw();
-  }, [selectedId, selectedKind, extraSelectedIds, stores]);
+  }, [isSpacePanning, selectedId, selectedKind, extraSelectedIds, stores]);
 
   useEffect(() => {
     const tr = assetTransformerRef.current;
     if (!tr) return;
-    const group = selectedKind === "asset" && selectedId
+    const group = !isSpacePanning && selectedKind === "asset" && selectedId
       ? assetRefs.current[selectedId]
       : null;
     tr.nodes(group ? [group] : []);
     tr.getLayer()?.batchDraw();
-  }, [selectedId, selectedKind, assets]);
+  }, [isSpacePanning, selectedId, selectedKind, assets]);
 
   // Convert the Line's transient scale/rotation/translation back into polygon
   // points. The DB stores final polygon vertices, so rotation is baked into the
@@ -592,6 +636,15 @@ export default function MapCanvas({
     if (container) container.style.cursor = cur;
   };
 
+  useEffect(() => {
+    const container = stageRef.current?.container?.();
+    if (container) {
+      container.style.cursor = tool === "pan" || isSpacePanning
+        ? (isStageDragging ? "grabbing" : "grab")
+        : "crosshair";
+    }
+  }, [tool, isSpacePanning, isStageDragging]);
+
   // Duplicate a single room with an offset — shared by Ctrl+D and the menu.
   const duplicateStore = useCallback((id: string) => {
     const src = stores.find((s) => s.id === id);
@@ -610,7 +663,7 @@ export default function MapCanvas({
   return (
     <div
       className="flex-1 overflow-hidden bg-slate-100 relative"
-      style={{ cursor: tool === "pan" ? "grab" : "crosshair" }}
+      style={{ cursor: tool === "pan" || isSpacePanning ? (isStageDragging ? "grabbing" : "grab") : "crosshair" }}
       onContextMenu={(e) => { e.preventDefault(); }}
     >
       {gridSnapToggle}
@@ -667,7 +720,13 @@ export default function MapCanvas({
         ref={stageRef}
         width={canvasWidth}
         height={canvasHeight}
-        draggable={tool === "pan"}
+        draggable={tool === "pan" || isSpacePanning}
+        onDragStart={(e: any) => {
+          if (e.target === stageRef.current) setIsStageDragging(true);
+        }}
+        onDragEnd={(e: any) => {
+          if (e.target === stageRef.current) setIsStageDragging(false);
+        }}
         onClick={handleStageClick}
         onDblClick={handleStageDblClick}
         onMouseMove={handleMouseMove}
@@ -696,7 +755,7 @@ export default function MapCanvas({
             const isSel = isPrimary || isExtra;
             // Whole-shape drag only the primary so multi-select stays a
             // batch-edit gesture — moving a group at once is a separate feature.
-            const canDragShape = tool === "select" && isPrimary;
+            const canDragShape = tool === "select" && isPrimary && !isSpacePanning;
             return (
               <Group key={store.id}>
                 <Line
@@ -715,7 +774,7 @@ export default function MapCanvas({
                   onTap={(e: any) => handleStoreClick(store.id, e)}
                   onMouseDown={(e: any) => {
                     // Right-click → context menu (no selection change)
-                    if (e.evt?.button === 2 && tool === "select") {
+                    if (e.evt?.button === 2 && tool === "select" && !isSpacePanning) {
                       e.cancelBubble = true;
                       e.evt.preventDefault?.();
                       if (!isPrimary) setSelected(store.id, "store");
@@ -779,15 +838,15 @@ export default function MapCanvas({
                 x={asset.x}
                 y={asset.y}
                 rotation={asset.rotation}
-                draggable={tool === "select"}
+                draggable={tool === "select" && !isSpacePanning}
                 onDragStart={() => { pushSnapshot(); }}
                 onDragEnd={(e: any) => handleAssetDragEnd(asset.id, e)}
                 onTransformStart={() => { pushSnapshot(); }}
                 onTransformEnd={(e: any) => handleAssetTransformEnd(asset.id, e)}
-                onClick={(e: any) => { e.cancelBubble = true; setSelected(asset.id, "asset"); }}
-                onTap={(e: any) => { e.cancelBubble = true; setSelected(asset.id, "asset"); }}
-                onMouseEnter={() => tool === "select" && setCursor("move")}
-                onMouseLeave={() => tool === "select" && setCursor("crosshair")}
+                onClick={(e: any) => { e.cancelBubble = true; if (!isSpacePanning) setSelected(asset.id, "asset"); }}
+                onTap={(e: any) => { e.cancelBubble = true; if (!isSpacePanning) setSelected(asset.id, "asset"); }}
+                onMouseEnter={() => tool === "select" && !isSpacePanning && setCursor("move")}
+                onMouseLeave={() => tool === "select" && !isSpacePanning && setCursor("crosshair")}
               >
                 {asset.type === "tree" ? (
                   <>
@@ -1002,13 +1061,13 @@ export default function MapCanvas({
                         fill="#ffffff"
                         stroke={isBoundHighlight ? "#f59e0b" : baseColor}
                         strokeWidth={isBoundHighlight ? 4 : 3}
-                        draggable={tool === "select"}
+                        draggable={tool === "select" && !isSpacePanning}
                         onDragStart={() => { pushSnapshot(); }}
                         onDragMove={(e: any) => handleNodeDragMove(node.id, e)}
                         onClick={(e: any) => handleNodeClick(node.id, e)}
                         onTap={(e: any) => handleNodeClick(node.id, e)}
-                        onMouseEnter={() => tool === "select" && setCursor("move")}
-                        onMouseLeave={() => tool === "select" && setCursor("crosshair")}
+                        onMouseEnter={() => tool === "select" && !isSpacePanning && setCursor("move")}
+                        onMouseLeave={() => tool === "select" && !isSpacePanning && setCursor("crosshair")}
                         shadowBlur={isEdgeStart || isSel || isBoundHighlight || (linkModeStoreId ? 12 : 0)}
                         shadowColor={isLinked ? "#10b981" : isBoundHighlight ? "#f59e0b" : baseColor}
                       />
@@ -1056,7 +1115,7 @@ export default function MapCanvas({
 
         {/* Vertex handles layer (top-most so they're always grabbable) */}
         <Layer>
-          {tool === "select" && selectedKind === "store" && (() => {
+          {tool === "select" && !isSpacePanning && selectedKind === "store" && (() => {
             const store = stores.find((s) => s.id === selectedId);
             if (!store) return null;
             return store.polygon.map((p, idx) => (
