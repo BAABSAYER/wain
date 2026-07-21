@@ -1,6 +1,14 @@
 "use client";
 import { useMemo, useState } from "react";
 import { useMapBuilderStore } from "@/store/map-builder";
+import type { StoreCategory } from "@wain/types";
+
+const CATEGORIES: StoreCategory[] = [
+  "retail", "food", "services", "medical", "education",
+  "transit", "restroom", "restroom_male", "restroom_female",
+  "elevator", "stairs", "escalator", "entrance", "parking", "dining",
+  "open_area", "corridor", "garden", "building_border", "door", "tree", "other",
+];
 
 interface AABB {
   id: string;
@@ -24,7 +32,7 @@ interface Props {
 
 /**
  * Shown when 2+ rooms are selected (primary + shift-clicked extras). Lets the
- * admin assign a shared zone (department) and optionally a shared color to all
+ * admin assign a shared zone, room type, and optionally a shared color to all
  * of them in one shot. The underlying data model is unchanged — each room keeps
  * its own name, polygon, category, etc.; "group" = rooms with the same `zone`.
  */
@@ -104,6 +112,8 @@ export default function BulkEditPanel({ selectedIds }: Props) {
 
   const [zone, setZone] = useState(sharedZone);
   const [zoneAr, setZoneAr] = useState(sharedZoneAr);
+  const [applyCategory, setApplyCategory] = useState(false);
+  const [category, setCategory] = useState<StoreCategory>(selectedStores[0]?.category ?? "other");
   const [applyColor, setApplyColor] = useState(false);
   const [color, setColor] = useState<string>(selectedStores[0]?.color ?? COLORS[0]);
 
@@ -117,9 +127,10 @@ export default function BulkEditPanel({ selectedIds }: Props) {
   const apply = () => {
     pushSnapshot();
     for (const id of selectedIds) {
-      const patch: { zone?: string; zoneAr?: string; color?: string } = {};
+      const patch: { zone?: string; zoneAr?: string; category?: StoreCategory; color?: string } = {};
       if (zone) patch.zone = zone;
       if (zoneAr) patch.zoneAr = zoneAr;
+      if (applyCategory) patch.category = category;
       if (applyColor) patch.color = color;
       if (Object.keys(patch).length > 0) updateStore(id, patch);
     }
@@ -130,14 +141,14 @@ export default function BulkEditPanel({ selectedIds }: Props) {
     setSelected(null);
   };
 
-  const canApply = !!zone || !!zoneAr || applyColor;
+  const canApply = !!zone || !!zoneAr || applyCategory || applyColor;
 
   return (
     <div className="p-4 flex flex-col gap-4">
       <div>
         <h3 className="font-semibold text-slate-900">Group {selectedIds.length} rooms</h3>
         <p className="text-xs text-slate-500 mt-0.5 leading-relaxed">
-          Assign a shared department / zone (and optional color) to every selected room.
+          Assign a shared zone, room type, or color to every selected room.
           Each room keeps its own name, number, and polygon.
         </p>
       </div>
@@ -221,6 +232,27 @@ export default function BulkEditPanel({ selectedIds }: Props) {
           onChange={(e) => setZoneAr(e.target.value)}
         />
       </label>
+
+      <div className="border-t border-slate-100 pt-3">
+        <label className="flex items-center gap-2 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={applyCategory}
+            onChange={(e) => setApplyCategory(e.target.checked)}
+            className="w-4 h-4 rounded text-blue-500 focus:ring-blue-500"
+          />
+          <span className="text-xs text-slate-700 font-medium">Apply a shared room type</span>
+        </label>
+        {applyCategory && (
+          <select
+            className="mt-2 w-full bg-white border border-slate-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 rounded px-3 py-1.5 text-sm text-slate-900 outline-none"
+            value={category}
+            onChange={(e) => setCategory(e.target.value as StoreCategory)}
+          >
+            {CATEGORIES.map((value) => <option key={value} value={value}>{value}</option>)}
+          </select>
+        )}
+      </div>
 
       {/* Shared group color (optional) */}
       <div className="border-t border-slate-100 pt-3">

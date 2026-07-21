@@ -31,8 +31,23 @@ export default function FloorEditorPage() {
   const [qrPrompt, setQrPrompt] = useState<{ nodeId: string; label: string } | null>(null);
   const [qrError, setQrError] = useState<string | null>(null);
 
-  const { isDirty, markClean, loadFromApi, stores, assets, nodes, edges, setTool } = useMapBuilderStore();
+  const {
+    isDirty, markClean, loadFromApi, stores, assets, nodes, edges, setTool,
+    selectedId, selectedKind, extraSelectedIds, setSelected,
+    toggleExtraSelection, selectAllStores,
+  } = useMapBuilderStore();
   const { url: publicAppUrl } = usePublicAppUrl();
+
+  const selectedRoomIds = selectedKind === "store" && selectedId
+    ? new Set([selectedId, ...extraSelectedIds])
+    : new Set<string>();
+  const toggleRoomSelection = (roomId: string) => {
+    if (selectedKind !== "store" || !selectedId) {
+      setSelected(roomId, "store");
+      return;
+    }
+    toggleExtraSelection(roomId);
+  };
 
   // Track viewport size for canvas
   useEffect(() => {
@@ -294,16 +309,48 @@ export default function FloorEditorPage() {
           })()}
 
           <div className="p-3 border-b border-slate-200">
-            <div className="text-xs text-slate-500 font-semibold uppercase tracking-wider mb-2">
-              Rooms ({stores.length})
+            <div className="flex items-center justify-between gap-2 mb-2">
+              <div className="text-xs text-slate-500 font-semibold uppercase tracking-wider">
+                Rooms ({stores.length})
+              </div>
+              {stores.length > 0 && (
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => selectAllStores(stores.map((store) => store.id))}
+                    className="px-1.5 py-0.5 text-[10px] font-medium text-blue-600 hover:bg-blue-50 rounded"
+                  >Select all</button>
+                  {selectedRoomIds.size > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setSelected(null)}
+                      className="px-1.5 py-0.5 text-[10px] font-medium text-slate-500 hover:bg-slate-100 rounded"
+                    >Clear</button>
+                  )}
+                </div>
+              )}
             </div>
             <div className="space-y-1">
-              {stores.map((s) => (
-                <div key={s.id} className="text-xs text-slate-700 py-1 flex items-center gap-2 truncate">
-                  <span className="inline-block w-2.5 h-2.5 rounded-sm flex-shrink-0 border border-slate-200" style={{ backgroundColor: s.color }} />
-                  <span className="truncate">{s.name}</span>
-                </div>
-              ))}
+              {stores.map((s) => {
+                const selected = selectedRoomIds.has(s.id);
+                return (
+                  <label
+                    key={s.id}
+                    className={`text-xs py-1.5 px-1.5 flex items-center gap-2 rounded cursor-pointer ${
+                      selected ? "bg-blue-50 text-blue-800" : "text-slate-700 hover:bg-slate-50"
+                    }`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={selected}
+                      onChange={() => toggleRoomSelection(s.id)}
+                      className="w-3.5 h-3.5 rounded border-slate-300 text-blue-600 focus:ring-blue-500 flex-shrink-0"
+                    />
+                    <span className="inline-block w-2.5 h-2.5 rounded-sm flex-shrink-0 border border-slate-200" style={{ backgroundColor: s.color }} />
+                    <span className="truncate">{s.name}</span>
+                  </label>
+                );
+              })}
               {stores.length === 0 && (
                 <p className="text-xs text-slate-400 italic">None yet</p>
               )}
