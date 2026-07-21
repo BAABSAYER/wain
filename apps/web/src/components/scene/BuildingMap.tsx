@@ -86,6 +86,13 @@ function restroomTiles(category: string): string | null {
 interface RouteStep { nodeId: string; floorId: string; x: number; y: number; z: number; }
 interface NavLine { a: { x: number; y: number }; b: { x: number; y: number }; }
 
+function storeCentroid(store: StoreData): { x: number; y: number } {
+  return {
+    x: store.polygon.reduce((sum, point) => sum + point.x, 0) / store.polygon.length,
+    y: store.polygon.reduce((sum, point) => sum + point.y, 0) / store.polygon.length,
+  };
+}
+
 export interface SceneProjectionInfo {
   azimuth: number;
   destScreen: { x: number; y: number; inView: boolean } | null;
@@ -537,8 +544,22 @@ const BuildingMap = forwardRef<BuildingMapHandle, Props>(function BuildingMap(
   const destLngLatRef = useRef<[number, number] | null>(null);
   onProjectionRef.current = onProjection;
   onBlockClickRef.current = onBlockClick;
-  destLngLatRef.current = routeSteps.length >= 2
-    ? toLngLat(routeSteps[routeSteps.length - 1].x, routeSteps[routeSteps.length - 1].y)
+
+  const destinationPoint = useMemo(() => {
+    if (routeSteps.length < 2 || !destinationId) return null;
+    const destination = stores.find((store) => store.id === destinationId);
+    return destination?.polygon.length ? storeCentroid(destination) : null;
+  }, [routeSteps.length, destinationId, stores]);
+
+  const routePoints = useMemo(() => {
+    const points = routeSteps.map((step) => ({ x: step.x, y: step.y }));
+    if (destinationPoint) points.push(destinationPoint);
+    return points;
+  }, [routeSteps, destinationPoint]);
+
+  const routeEndPoint = routePoints[routePoints.length - 1] ?? null;
+  destLngLatRef.current = routePoints.length >= 2 && routeEndPoint
+    ? toLngLat(routeEndPoint.x, routeEndPoint.y)
     : null;
 
   // Bounds of the whole floor (for fitBounds / recenter)
@@ -614,15 +635,15 @@ const BuildingMap = forwardRef<BuildingMapHandle, Props>(function BuildingMap(
 
   const routeFC = useMemo(() => ({
     type: "FeatureCollection" as const,
-    features: routeSteps.length >= 2 ? [{
+    features: routePoints.length >= 2 ? [{
       type: "Feature" as const,
       properties: {},
       geometry: {
         type: "LineString" as const,
-        coordinates: routeSteps.map((s) => toLngLat(s.x, s.y)),
+        coordinates: routePoints.map((point) => toLngLat(point.x, point.y)),
       },
     }] : [],
-  }), [routeSteps, toLngLat]);
+  }), [routePoints, toLngLat]);
 
   const corridorsFC = useMemo(() => ({
     type: "FeatureCollection" as const,
@@ -1007,10 +1028,6 @@ const BuildingMap = forwardRef<BuildingMapHandle, Props>(function BuildingMap(
       !isBoundaryArea(s.category) &&
       (!isOpenSpace(s.category) || LANDMARK_CATEGORIES.has(s.category)),
     );
-    const centroid = (s: StoreData) => ({
-      x: s.polygon.reduce((a, p) => a + p.x, 0) / s.polygon.length,
-      y: s.polygon.reduce((a, p) => a + p.y, 0) / s.polygon.length,
-    });
     const addMarker = (lngLat: [number, number], el: HTMLElement) => {
       labelMarkersRef.current.push(new maplibregl.Marker({ element: el }).setLngLat(lngLat).addTo(map));
     };
@@ -1020,7 +1037,7 @@ const BuildingMap = forwardRef<BuildingMapHandle, Props>(function BuildingMap(
     for (const s of real) {
       if (!s.zone) continue;
       const g = zoneGroups.get(s.zone) ?? { en: s.zone, ar: s.zoneAr || s.zone, color: s.color, xs: [], ys: [] };
-      const c = centroid(s);
+      const c = storeCentroid(s);
       g.xs.push(c.x); g.ys.push(c.y);
       zoneGroups.set(s.zone, g);
     }
@@ -1037,7 +1054,7 @@ const BuildingMap = forwardRef<BuildingMapHandle, Props>(function BuildingMap(
 
     // 2) PER-STORE markers
     for (const s of real) {
-      const c = centroid(s);
+      const c = storeCentroid(s);
       const ll = toLngLat(c.x, c.y);
       const isDest = s.id === destinationId;
       const isSel = s.id === selectedId;
@@ -1147,9 +1164,10 @@ const BuildingMap = forwardRef<BuildingMapHandle, Props>(function BuildingMap(
     if (routeSteps.length < 2) return null;
     const b = new maplibregl.LngLatBounds();
     routeSteps.forEach((s) => b.extend(toLngLat(s.x, s.y)));
+    if (destinationPoint) b.extend(toLngLat(destinationPoint.x, destinationPoint.y));
     if (origin) b.extend(toLngLat(origin.x, origin.y));
     return b;
-  }, [routeSteps, origin, toLngLat]);
+  }, [routeSteps, destinationPoint, origin, toLngLat]);
 
   const routeCamera = useMemo(() => {
     if (routeSteps.length < 2) return null;
