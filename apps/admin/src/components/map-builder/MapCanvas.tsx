@@ -221,9 +221,8 @@ export default function MapCanvas({
     }
   }, [isSpacePanning, tool, activePreset, activeAssetPreset, getStagePos, addPolygonPoint, addNode, addAsset, addPresetStore, setSelected, pushSnapshot, snapToGrid, snapToNavLine]);
 
-  const handleStageDblClick = useCallback(() => {
-    if (isSpacePanning) return;
-    if (tool === "polygon" && activePolygon.length >= 3) {
+  const closeActivePolygon = useCallback(() => {
+    if (activePolygon.length >= 3) {
       pushSnapshot();
       commitPolygon({
         id: nanoid(),
@@ -234,7 +233,12 @@ export default function MapCanvas({
         extrudeHeight: 5,
       });
     }
-  }, [isSpacePanning, tool, activePolygon, commitPolygon, pushSnapshot]);
+  }, [activePolygon, commitPolygon, pushSnapshot]);
+
+  const handleStageDblClick = useCallback(() => {
+    if (isSpacePanning || tool !== "polygon") return;
+    closeActivePolygon();
+  }, [isSpacePanning, tool, closeActivePolygon]);
 
   const handleNodeClick = useCallback((nodeId: string, e: any) => {
     if (isSpacePanning) {
@@ -826,9 +830,33 @@ export default function MapCanvas({
                 strokeWidth={1.5}
                 dash={[6, 3]}
               />
-              {activePolygon.map((p, i) => (
-                <Circle key={i} x={p.x} y={p.y} radius={4} fill="#3b82f6" />
-              ))}
+              {activePolygon.map((p, i) => {
+                const isClosePoint = i === 0 && activePolygon.length >= 3;
+                return (
+                  <Circle
+                    key={i}
+                    x={p.x}
+                    y={p.y}
+                    radius={isClosePoint ? 7 : 4}
+                    fill="#3b82f6"
+                    stroke={isClosePoint ? "#ffffff" : undefined}
+                    strokeWidth={isClosePoint ? 2 : 0}
+                    hitStrokeWidth={isClosePoint ? 10 : 0}
+                    onClick={isClosePoint ? (e: any) => {
+                      if (isSpacePanning) return;
+                      e.cancelBubble = true;
+                      closeActivePolygon();
+                    } : undefined}
+                    onTap={isClosePoint ? (e: any) => {
+                      if (isSpacePanning) return;
+                      e.cancelBubble = true;
+                      closeActivePolygon();
+                    } : undefined}
+                    onMouseEnter={isClosePoint && !isSpacePanning ? () => setCursor("pointer") : undefined}
+                    onMouseLeave={isClosePoint && !isSpacePanning ? () => setCursor("crosshair") : undefined}
+                  />
+                );
+              })}
             </>
           )}
         </Layer>
