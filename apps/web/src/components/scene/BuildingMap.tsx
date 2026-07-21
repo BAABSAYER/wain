@@ -308,6 +308,7 @@ function createThreeAssetLayer(
   let camera: THREE.Camera | null = null;
   let renderer: THREE.WebGLRenderer | null = null;
   let root: THREE.Group | null = null;
+  let sceneTransform = new THREE.Matrix4();
   let rebuildVersion = 0;
 
   const rebuild = () => {
@@ -315,22 +316,26 @@ function createThreeAssetLayer(
     const version = ++rebuildVersion;
     root.clear();
     const toLngLatLocal = getToLngLat();
-    for (const asset of getAssets()) {
-      const lngLat = toLngLatLocal(asset.x, asset.y);
-      const altitude = (asset.z ?? 0) * METERS_PER_UNIT;
-      const coord = maplibregl.MercatorCoordinate.fromLngLat({ lng: lngLat[0], lat: lngLat[1] }, altitude);
-      const meterScale = coord.meterInMercatorCoordinateUnits();
+    const anchorLngLat = toLngLatLocal(0, 0);
+    const anchor = maplibregl.MercatorCoordinate.fromLngLat(
+      { lng: anchorLngLat[0], lat: anchorLngLat[1] },
+      0,
+    );
+    const meterScale = anchor.meterInMercatorCoordinateUnits();
+    sceneTransform = new THREE.Matrix4()
+      .makeTranslation(anchor.x, anchor.y, anchor.z)
+      .scale(new THREE.Vector3(meterScale, -meterScale, meterScale))
+      .multiply(new THREE.Matrix4().makeRotationX(Math.PI / 2));
 
+    for (const asset of getAssets()) {
       void createLoadedAssetObject(asset).then((object) => {
         if (!root || version !== rebuildVersion) return;
-        const georeferenced = new THREE.Group();
-        georeferenced.matrixAutoUpdate = false;
-        georeferenced.matrix
-          .makeTranslation(coord.x, coord.y, coord.z)
-          .scale(new THREE.Vector3(meterScale, -meterScale, meterScale))
-          .multiply(new THREE.Matrix4().makeRotationX(Math.PI / 2));
-        georeferenced.add(object);
-        root.add(georeferenced);
+        object.position.set(
+          asset.x * METERS_PER_UNIT,
+          (asset.z ?? 0) * METERS_PER_UNIT,
+          asset.y * METERS_PER_UNIT,
+        );
+        root.add(object);
         map?.triggerRepaint();
       }).catch((error) => {
         console.warn(`Could not load 3D asset ${asset.id}`, error);
@@ -364,9 +369,11 @@ function createThreeAssetLayer(
     },
     render(_gl, options) {
       if (!renderer || !scene || !camera) return;
-      const modelViewProjectionMatrix = options.modelViewProjectionMatrix;
-      if (!modelViewProjectionMatrix) return;
-      camera.projectionMatrix = new THREE.Matrix4().fromArray(modelViewProjectionMatrix);
+      const projectionMatrix = options.defaultProjectionData?.mainMatrix;
+      if (!projectionMatrix) return;
+      camera.projectionMatrix = new THREE.Matrix4()
+        .fromArray(projectionMatrix)
+        .multiply(sceneTransform);
       renderer.resetState();
       renderer.render(scene, camera);
     },
