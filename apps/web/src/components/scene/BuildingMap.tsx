@@ -445,6 +445,7 @@ function material(color: string, roughness = 0.72) {
 function addBox(group: THREE.Group, color: string, x: number, y: number, z: number, sx: number, sy: number, sz: number) {
   const mesh = new THREE.Mesh(new THREE.BoxGeometry(sx, sy, sz), material(color));
   mesh.position.set(x, y, z + sz / 2);
+  mesh.frustumCulled = false;
   mesh.castShadow = true;
   mesh.receiveShadow = true;
   group.add(mesh);
@@ -455,6 +456,7 @@ function addCylinder(group: THREE.Group, color: string, x: number, y: number, z:
   const mesh = new THREE.Mesh(new THREE.CylinderGeometry(radius, radius, height, segments), material(color));
   mesh.rotation.x = Math.PI / 2;
   mesh.position.set(x, y, z + height / 2);
+  mesh.frustumCulled = false;
   mesh.castShadow = true;
   mesh.receiveShadow = true;
   group.add(mesh);
@@ -464,6 +466,7 @@ function addCylinder(group: THREE.Group, color: string, x: number, y: number, z:
 function addSphere(group: THREE.Group, color: string, x: number, y: number, z: number, radius: number) {
   const mesh = new THREE.Mesh(new THREE.SphereGeometry(radius, 14, 10), material(color));
   mesh.position.set(x, y, z + radius);
+  mesh.frustumCulled = false;
   mesh.castShadow = true;
   mesh.receiveShadow = true;
   group.add(mesh);
@@ -474,6 +477,7 @@ function addCone(group: THREE.Group, color: string, x: number, y: number, z: num
   const mesh = new THREE.Mesh(new THREE.ConeGeometry(radius, height, 4), material(color));
   mesh.rotation.z = Math.PI / 4;
   mesh.position.set(x, y, z + height / 2);
+  mesh.frustumCulled = false;
   mesh.castShadow = true;
   mesh.receiveShadow = true;
   group.add(mesh);
@@ -752,6 +756,23 @@ const BuildingMap = forwardRef<BuildingMapHandle, Props>(function BuildingMap(
       }),
   }), [stores, toLngLat]);
 
+  const assetFallbackFC = useMemo(() => ({
+    type: "FeatureCollection" as const,
+    features: assets.map((asset) => {
+      const ring = assetFootprint(asset).map((p) => toLngLat(p.x, p.y));
+      if (ring.length > 0) ring.push(ring[0]);
+      return {
+        type: "Feature" as const,
+        id: asset.id,
+        properties: {
+          id: asset.id,
+          color: asset.color || "#64748b",
+        },
+        geometry: { type: "Polygon" as const, coordinates: [ring] },
+      };
+    }),
+  }), [assets, toLngLat]);
+
   const routeFC = useMemo(() => ({
     type: "FeatureCollection" as const,
     features: routeSteps.length >= 2 ? [{
@@ -938,6 +959,23 @@ const BuildingMap = forwardRef<BuildingMapHandle, Props>(function BuildingMap(
         },
       });
 
+      map.addSource("asset-fallback", { type: "geojson", data: assetFallbackFC, promoteId: "id" });
+      map.addLayer({
+        id: "asset-fallback-fill", type: "fill", source: "asset-fallback",
+        paint: {
+          "fill-color": ["coalesce", ["get", "color"], "#64748b"],
+          "fill-opacity": ["interpolate", ["linear"], ["zoom"], 16, 0.18, 19, 0.38],
+        },
+      });
+      map.addLayer({
+        id: "asset-fallback-outline", type: "line", source: "asset-fallback",
+        paint: {
+          "line-color": "#ffffff",
+          "line-width": ["interpolate", ["linear"], ["zoom"], 16, 0.4, 20, 1.6],
+          "line-opacity": 0.65,
+        },
+      });
+
       const assetLayer = createThreeAssetLayer(
         () => assetsRef.current,
         () => toLngLatRef.current,
@@ -1118,6 +1156,12 @@ const BuildingMap = forwardRef<BuildingMapHandle, Props>(function BuildingMap(
     if (!map || !readyRef.current) return;
     (map.getSource("boundaries") as maplibregl.GeoJSONSource | undefined)?.setData(boundariesFC as any);
   }, [boundariesFC, ready]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !readyRef.current) return;
+    (map.getSource("asset-fallback") as maplibregl.GeoJSONSource | undefined)?.setData(assetFallbackFC as any);
+  }, [assetFallbackFC, ready]);
 
   useEffect(() => {
     if (!readyRef.current) return;
