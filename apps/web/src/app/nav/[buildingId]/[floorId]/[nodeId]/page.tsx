@@ -94,7 +94,7 @@ export default function NavPage() {
       })
       .catch(() => setError("Building not found. Please scan the QR code again."))
       .finally(() => setLoading(false));
-    // Nav graph (nodes + edgesFrom) for the always-on corridor arrows
+    // Nav graph (nodes + edgesFrom) used only while a route is active.
     api.getGraph(buildingId).then(setGraph).catch(() => setGraph([]));
   }, [buildingId, floorId, nodeId]);
 
@@ -129,7 +129,10 @@ export default function NavPage() {
   // One-shot azimuth: orient the camera so the route reads "up" when a destination is picked.
   const initialAzimuth = useMemo<number | null>(() => {
     if (!route || !originNode) return null;
-    const last = route.steps[route.steps.length - 1];
+    // For a cross-floor route, face the transition point on the starting floor,
+    // not a destination whose coordinates belong to a different floor plan.
+    const startingFloorSteps = route.steps.filter((step) => step.floorId === originNode.floorId);
+    const last = startingFloorSteps[startingFloorSteps.length - 1];
     if (!last) return null;
     const dx = last.x - originNode.x;
     const dy = last.y - originNode.y;
@@ -204,6 +207,12 @@ export default function NavPage() {
     setDestinationName(name);
     setDestinationNameAr(nameAr);
     setLastDest({ id: storeId, name, nameAr });
+
+    // A destination preview may have switched floors. Navigation must always
+    // begin where the QR code was scanned and advance floors via the handoff.
+    const startingFloor = building?.floors.find((floor) => floor.id === originNode?.floorId);
+    if (startingFloor) setCurrentFloor(startingFloor);
+
     try {
       const result = await api.getRoute(nodeId, storeId, useAccessible);
       setRoute(result);
@@ -213,7 +222,7 @@ export default function NavPage() {
       setDestinationName(null);
       setDestinationNameAr(null);
     }
-  }, [nodeId, buildingId, floorId, accessible]);
+  }, [nodeId, buildingId, floorId, accessible, building, originNode]);
 
   // Toggle accessible routing; recompute the active route if one is shown.
   const toggleAccessible = useCallback(() => {
@@ -401,20 +410,26 @@ export default function NavPage() {
           {building.floors
             .slice()
             .sort((a, b) => b.level - a.level)
-            .map((f) => (
-              <button
-                key={f.id}
-                onClick={() => setCurrentFloor(f)}
-                className={`w-11 h-11 flex items-center justify-center text-sm font-bold transition-colors ${
-                  f.id === currentFloor.id
-                    ? "bg-blue-500 text-white"
-                    : "text-slate-700 hover:bg-slate-50"
-                }`}
-                aria-label={`${t("floor")} ${f.level === 0 ? t("groundFloor") : f.level}`}
-              >
-                {f.level === 0 ? (locale === "ar" ? "أ" : "G") : f.level}
-              </button>
-            ))}
+            .map((f) => {
+              const lockedByHandoff = hasRoute && routeFloorIds.length > 1 && f.id !== currentFloor.id;
+              return (
+                <button
+                  key={f.id}
+                  onClick={() => !lockedByHandoff && setCurrentFloor(f)}
+                  disabled={lockedByHandoff}
+                  className={`w-11 h-11 flex items-center justify-center text-sm font-bold transition-colors ${
+                    f.id === currentFloor.id
+                      ? "bg-blue-500 text-white"
+                      : lockedByHandoff
+                        ? "text-slate-300 cursor-not-allowed"
+                        : "text-slate-700 hover:bg-slate-50"
+                  }`}
+                  aria-label={`${t("floor")} ${f.level === 0 ? t("groundFloor") : f.level}`}
+                >
+                  {f.level === 0 ? (locale === "ar" ? "أ" : "G") : f.level}
+                </button>
+              );
+            })}
         </div>
       )}
 
@@ -436,7 +451,7 @@ export default function NavPage() {
             heading={heading}
             initialAzimuth={initialAzimuth}
             locale={locale}
-            navEdges={navLines}
+            navEdges={hasRoute ? navLines : []}
             onProjection={setProjection}
             onBlockClick={handleBlockClick}
           />
@@ -545,7 +560,7 @@ export default function NavPage() {
                 onClick={() => setCurrentFloor(floorHandoff.nextFloor as any)}
                 className="flex-shrink-0 bg-white text-blue-700 font-bold text-sm px-3 py-2 rounded-xl hover:bg-blue-50"
               >
-                {locale === "ar" ? "انتقل ←" : "Go →"}
+                {locale === "ar" ? "وصلت ←" : "I've arrived →"}
               </button>
             )}
           </div>

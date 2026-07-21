@@ -42,7 +42,7 @@ const TOOLS: { id: DrawTool; label: string; icon: string; hint: string }[] = [
   { id: "shape",   label: "Shape",    icon: "⬜", hint: "Pick a preset shape, then click the canvas to drop it" },
   { id: "asset",   label: "Asset",    icon: "3D", hint: "Pick a 3D asset, then click the canvas to place it" },
   { id: "node",    label: "Node",     icon: "●", hint: "Click to drop a nav node. Near an existing line, it snaps onto that line." },
-  { id: "edge",    label: "Edge",     icon: "—", hint: "Click two nodes to connect them" },
+  { id: "edge",    label: "Path",     icon: "—", hint: "Click to draw a connected path with straight, angle-snapped segments" },
   { id: "qr",      label: "QR",       icon: "▣", hint: "Click a nav node to create a QR scan point" },
 ];
 

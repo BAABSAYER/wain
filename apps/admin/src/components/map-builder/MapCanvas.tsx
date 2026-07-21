@@ -52,6 +52,7 @@ const NODE_COLORS: Record<string, string> = {
 
 const LINE_SNAP_THRESHOLD = 18;
 const LINE_SNAP_EXTENSION = 120;
+const EDGE_ANGLE_STEP = Math.PI / 4;
 
 type Point = { x: number; y: number };
 
@@ -125,6 +126,25 @@ export default function MapCanvas({
     return best ? snapToGrid(best.point) : snapToGrid(pt);
   }, [edges, nodes, snapToGrid]);
 
+  // Keep corridor segments on clean 45-degree bearings. This removes small
+  // left/right placement errors while still allowing diagonal floor plans.
+  const snapEdgePoint = useCallback((pt: Point, fromNodeId: string): Point => {
+    const from = nodes.find((node) => node.id === fromNodeId);
+    if (!from) return snapToGrid(pt);
+
+    const dx = pt.x - from.x;
+    const dy = pt.y - from.y;
+    const rawDistance = Math.hypot(dx, dy);
+    if (rawDistance === 0) return { x: from.x, y: from.y };
+
+    const angle = Math.round(Math.atan2(dy, dx) / EDGE_ANGLE_STEP) * EDGE_ANGLE_STEP;
+    const distance = gridSnap ? Math.round(rawDistance / 10) * 10 : rawDistance;
+    return {
+      x: from.x + Math.cos(angle) * distance,
+      y: from.y + Math.sin(angle) * distance,
+    };
+  }, [nodes, gridSnap, snapToGrid]);
+
   const getStoreLinkedNodeIds = useCallback((store: typeof stores[number]) => {
     return store.navLinkNodeIds && store.navLinkNodeIds.length > 0
       ? store.navLinkNodeIds
@@ -185,6 +205,18 @@ export default function MapCanvas({
     const pos = tool === "node" ? snapToNavLine(raw) : snapToGrid(raw);
     if (tool === "polygon") { pushSnapshot(); addPolygonPoint(pos); return; }
     if (tool === "node")    { pushSnapshot(); addNode({ id: nanoid(), x: pos.x, y: pos.y, type: "path" }); return; }
+    if (tool === "edge") {
+      const newId = nanoid();
+      const edgePos = edgeStart ? snapEdgePoint(raw, edgeStart) : snapToGrid(raw);
+      const startNode = edgeStart ? nodes.find((node) => node.id === edgeStart) : null;
+      if (startNode && Math.hypot(edgePos.x - startNode.x, edgePos.y - startNode.y) < 1) return;
+
+      pushSnapshot();
+      addNode({ id: newId, x: edgePos.x, y: edgePos.y, type: "path" });
+      if (edgeStart) addEdge({ id: nanoid(), fromId: edgeStart, toId: newId });
+      setEdgeStart(newId);
+      return;
+    }
     if (tool === "asset" && activeAssetPreset) {
       const preset = findAssetPreset(activeAssetPreset);
       if (!preset) return;
@@ -219,7 +251,7 @@ export default function MapCanvas({
       // Keep the preset selected so the user can drop several in a row.
       return;
     }
-  }, [isSpacePanning, tool, activePreset, activeAssetPreset, getStagePos, addPolygonPoint, addNode, addAsset, addPresetStore, setSelected, pushSnapshot, snapToGrid, snapToNavLine]);
+  }, [isSpacePanning, tool, activePreset, activeAssetPreset, edgeStart, nodes, getStagePos, addPolygonPoint, addNode, addEdge, addAsset, addPresetStore, setSelected, pushSnapshot, snapToGrid, snapToNavLine, snapEdgePoint]);
 
   const closeActivePolygon = useCallback(() => {
     if (activePolygon.length >= 3) {
@@ -257,6 +289,7 @@ export default function MapCanvas({
     if (tool === "edge") {
       e.cancelBubble = true;
       if (!edgeStart) setEdgeStart(nodeId);
+      else if (edgeStart === nodeId) setEdgeStart(null);
       else if (edgeStart !== nodeId) {
         pushSnapshot();
         addEdge({ id: nanoid(), fromId: edgeStart, toId: nodeId });
@@ -300,10 +333,9 @@ export default function MapCanvas({
 
   const handleMouseMove = useCallback(() => {
     if (isSpacePanning) return;
-    if (tool === "polygon" || (tool === "edge" && edgeStart)) {
-      setMousePos(getStagePos());
-    }
-  }, [isSpacePanning, tool, edgeStart, getStagePos]);
+    if (tool === "polygon") setMousePos(getStagePos());
+    if (tool === "edge" && edgeStart) setMousePos(snapEdgePoint(getStagePos(), edgeStart));
+  }, [isSpacePanning, tool, edgeStart, getStagePos, snapEdgePoint]);
 
   // Wheel zoom (anchored at pointer)
   const handleWheel = useCallback((e: any) => {
@@ -685,7 +717,7 @@ export default function MapCanvas({
       {/* Status banners */}
       {tool === "edge" && edgeStart && (
         <div className="absolute top-2 left-1/2 -translate-x-1/2 bg-amber-500 text-white text-xs px-3 py-1 rounded-full z-10 shadow">
-          Click another node to connect — ESC to cancel
+          Click to add a straight segment and corner. Click the active node or press ESC to finish.
         </div>
       )}
       {tool === "polygon" && activePolygon.length > 0 && (

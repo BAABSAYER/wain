@@ -744,7 +744,7 @@ const BuildingMap = forwardRef<BuildingMapHandle, Props>(function BuildingMap(
         paint: { "line-color": "#e4dcca", "line-width": 4 },
       });
 
-      // Corridor wayfinding network (always visible) — light path + arrows
+      // Corridor wayfinding network. The page supplies it only during routing.
       if (!map.hasImage("corridor-arrow")) {
         map.addImage("corridor-arrow", makeArrowImage(), { pixelRatio: 2 });
       }
