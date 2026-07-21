@@ -94,7 +94,7 @@ export default function NavPage() {
       })
       .catch(() => setError("Building not found. Please scan the QR code again."))
       .finally(() => setLoading(false));
-    // Nav graph (nodes + edgesFrom) used only while a route is active.
+    // Nav graph is used to identify elevator/stair handoffs.
     api.getGraph(buildingId).then(setGraph).catch(() => setGraph([]));
   }, [buildingId, floorId, nodeId]);
 
@@ -184,23 +184,6 @@ export default function NavPage() {
   // chosen category is tinted via `highlightCategory` below.
   const allStores = currentFloor?.stores ?? [];
   const highlightCategory = filter === "all" ? null : filter;
-
-  // Corridor segments (nav-graph edges) for the always-on wayfinding arrows.
-  // Built from the /nav/graph endpoint (which includes edgesFrom), filtered to
-  // the current floor.
-  const navLines = useMemo(() => {
-    if (!currentFloor || graph.length === 0) return [];
-    const nodeMap = new Map(graph.map((n: any) => [n.id, n] as const));
-    const floorNodes = graph.filter((n: any) => n.floorId === currentFloor.id);
-    return floorNodes.flatMap((n: any) =>
-      (n.edgesFrom ?? []).map((e: any) => {
-        const a = nodeMap.get(e.fromNodeId);
-        const b = nodeMap.get(e.toNodeId);
-        if (!a || !b || a.floorId !== currentFloor.id || b.floorId !== currentFloor.id) return null;
-        return { a: { x: a.x, y: a.y }, b: { x: b.x, y: b.y } };
-      }),
-    ).filter(Boolean) as Array<{ a: { x: number; y: number }; b: { x: number; y: number } }>;
-  }, [currentFloor, graph]);
 
   const computeRoute = useCallback(async (storeId: string, name: string, nameAr: string, useAccessible = accessible) => {
     setRouteError(null);
@@ -451,7 +434,6 @@ export default function NavPage() {
             heading={heading}
             initialAzimuth={initialAzimuth}
             locale={locale}
-            navEdges={hasRoute ? navLines : []}
             onProjection={setProjection}
             onBlockClick={handleBlockClick}
           />

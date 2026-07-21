@@ -744,7 +744,8 @@ const BuildingMap = forwardRef<BuildingMapHandle, Props>(function BuildingMap(
         paint: { "line-color": "#e4dcca", "line-width": 4 },
       });
 
-      // Corridor wayfinding network. The page supplies it only during routing.
+      // Optional corridor network overlay. Normal navigation leaves this empty
+      // so only the calculated route ribbon is shown.
       if (!map.hasImage("corridor-arrow")) {
         map.addImage("corridor-arrow", makeArrowImage(), { pixelRatio: 2 });
       }
