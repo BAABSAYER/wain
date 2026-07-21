@@ -45,6 +45,10 @@ export default function BuildingPage() {
   const [floorForm, setFloorForm] = useState<FloorForm>(emptyFloorForm);
   const [editingFloorId, setEditingFloorId] = useState<string | null>(null);
   const [editFloorForm, setEditFloorForm] = useState<FloorForm>(emptyFloorForm);
+  const [duplicatingFloor, setDuplicatingFloor] = useState<any>(null);
+  const [duplicateFloorForm, setDuplicateFloorForm] = useState({ name: "", nameAr: "", level: 0 });
+  const [duplicateBusy, setDuplicateBusy] = useState(false);
+  const [duplicateError, setDuplicateError] = useState<string | null>(null);
   const [qrForm, setQrForm] = useState({ floorId: "", nodeId: "", label: "" });
   const [qrError, setQrError] = useState<string | null>(null);
   const { url: publicAppUrl } = usePublicAppUrl();
@@ -103,6 +107,46 @@ export default function BuildingPage() {
     });
     closeEditFloor();
     await refresh();
+  };
+
+  const openDuplicateFloor = (floor: any) => {
+    const levels = (building?.floors ?? []).map((item: any) => Number(item.level));
+    const nextLevel = levels.length ? Math.max(...levels) + 1 : Number(floor.level) + 1;
+    setShowFloorForm(false);
+    closeEditFloor();
+    setDuplicatingFloor(floor);
+    setDuplicateFloorForm({
+      name: `${floor.name} Copy`,
+      nameAr: `${floor.nameAr} - نسخة`,
+      level: nextLevel,
+    });
+    setDuplicateError(null);
+  };
+
+  const closeDuplicateFloor = () => {
+    if (duplicateBusy) return;
+    setDuplicatingFloor(null);
+    setDuplicateError(null);
+  };
+
+  const handleDuplicateFloor = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!duplicatingFloor) return;
+    setDuplicateBusy(true);
+    setDuplicateError(null);
+    try {
+      await api.duplicateFloor(duplicatingFloor.id, {
+        name: duplicateFloorForm.name.trim(),
+        nameAr: duplicateFloorForm.nameAr.trim(),
+        level: duplicateFloorForm.level,
+      });
+      setDuplicatingFloor(null);
+      await refresh();
+    } catch (err: any) {
+      setDuplicateError(err?.message ?? "Failed to duplicate floor");
+    } finally {
+      setDuplicateBusy(false);
+    }
   };
 
   const handleDeleteFloor = async (f: any) => {
@@ -274,6 +318,15 @@ export default function BuildingPage() {
                 <span className="text-blue-500 text-sm font-medium ml-3 flex-shrink-0">Open Map Builder →</span>
               </Link>
               <div className="flex items-center gap-1 pr-3 pl-1">
+                <button
+                  type="button"
+                  onClick={() => openDuplicateFloor(f)}
+                  title="Duplicate floor"
+                  aria-label={`Duplicate ${f.name}`}
+                  className="w-9 h-9 rounded-lg text-slate-500 hover:bg-blue-50 hover:text-blue-600 flex items-center justify-center text-lg"
+                >
+                  ⧉
+                </button>
                 <button
                   type="button"
                   onClick={() => openEditFloor(f)}
@@ -465,7 +518,45 @@ export default function BuildingPage() {
         />
       </section>
 
-      {/* ───── Reassign QR modal ───── */}
+      {/* ───── Floor and QR modals ───── */}
+      {duplicatingFloor && (
+        <div
+          className="fixed inset-0 z-50 bg-slate-900/40 flex items-center justify-center p-4"
+          onMouseDown={(e) => { if (e.target === e.currentTarget) closeDuplicateFloor(); }}
+        >
+          <form onSubmit={handleDuplicateFloor} className="bg-white rounded-2xl shadow-2xl w-full max-w-lg p-6 flex flex-col gap-4">
+            <div>
+              <h3 className="text-lg font-semibold text-slate-900">Duplicate floor</h3>
+              <p className="text-xs text-slate-500 mt-1">
+                Copies rooms, assets, the floor plan, and local navigation from <b>{duplicatingFloor.name}</b>.
+                QR codes and links to other floors are not copied.
+              </p>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <label className="flex flex-col gap-1">
+                <span className="text-xs text-slate-500 font-medium">Name (EN)</span>
+                <input required className="bg-white border border-slate-300 rounded px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500" value={duplicateFloorForm.name} onChange={(e) => setDuplicateFloorForm({ ...duplicateFloorForm, name: e.target.value })} />
+              </label>
+              <label className="flex flex-col gap-1">
+                <span className="text-xs text-slate-500 font-medium">Name (AR)</span>
+                <input dir="rtl" required className="bg-white border border-slate-300 rounded px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500" value={duplicateFloorForm.nameAr} onChange={(e) => setDuplicateFloorForm({ ...duplicateFloorForm, nameAr: e.target.value })} />
+              </label>
+            </div>
+            <label className="flex flex-col gap-1">
+              <span className="text-xs text-slate-500 font-medium">New level</span>
+              <input type="number" required className="bg-white border border-slate-300 rounded px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500" value={duplicateFloorForm.level} onChange={(e) => setDuplicateFloorForm({ ...duplicateFloorForm, level: Number(e.target.value) })} />
+            </label>
+            {duplicateError && <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{duplicateError}</p>}
+            <div className="flex justify-end gap-2">
+              <button type="button" disabled={duplicateBusy} onClick={closeDuplicateFloor} className="px-4 py-2 text-sm text-slate-500 hover:text-slate-700 disabled:opacity-50">Cancel</button>
+              <button type="submit" disabled={duplicateBusy} className="px-4 py-2 text-sm font-semibold bg-blue-500 hover:bg-blue-600 disabled:opacity-50 text-white rounded-lg shadow-sm">
+                {duplicateBusy ? "Duplicating..." : "Duplicate floor"}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
       {editingFloorId && (
         <div
           className="fixed inset-0 z-50 bg-slate-900/40 flex items-center justify-center p-4"

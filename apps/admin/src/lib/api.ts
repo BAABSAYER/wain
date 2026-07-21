@@ -64,6 +64,8 @@ export const api = {
   getFloors:   (buildingId: string)       => req<any[]>(`/floors/building/${buildingId}`),
   getFloor:    (id: string)               => req<any>(`/floors/${id}`),
   createFloor: (data: any)                => req<any>("/floors", { method: "POST", body: JSON.stringify(data) }),
+  duplicateFloor: (id: string, data: { name: string; nameAr: string; level: number }) =>
+                                              req<any>(`/floors/${id}/duplicate`, { method: "POST", body: JSON.stringify(data) }),
   deleteFloor: (id: string)               => req<any>(`/floors/${id}`, { method: "DELETE" }),
   updateFloor: (id: string, data: any)    => req<any>(`/floors/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
 
