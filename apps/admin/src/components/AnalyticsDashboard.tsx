@@ -50,7 +50,7 @@ export default function AnalyticsDashboard({ buildingId, storeNames }: Props) {
   return (
     <div className="space-y-4">
       {/* Stat cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+      <div className="grid grid-cols-1 min-[360px]:grid-cols-2 sm:grid-cols-3 gap-3">
         <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
           <div className="text-3xl font-bold text-blue-600">{data.totalScans}</div>
           <div className="text-xs text-slate-500 mt-1 uppercase tracking-wider">QR scans</div>
@@ -68,7 +68,7 @@ export default function AnalyticsDashboard({ buildingId, storeNames }: Props) {
       {/* Top destinations */}
       <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
         <div className="flex items-center justify-between mb-3">
-          <h3 className="font-semibold text-slate-900">Most-requested destinations</h3>
+          <h3 className="font-semibold text-slate-900 leading-tight">Most-requested destinations</h3>
           <button onClick={load} className="text-xs text-blue-600 hover:text-blue-800">↻ Refresh</button>
         </div>
         {data.topDestinations.length === 0 ? (
@@ -79,8 +79,8 @@ export default function AnalyticsDashboard({ buildingId, storeNames }: Props) {
               const name = storeNames[d.destinationId] ?? d.destinationId.slice(0, 8) + "…";
               const pct = (d._count.destinationId / maxCount) * 100;
               return (
-                <div key={d.destinationId} className="flex items-center gap-3">
-                  <div className="w-40 truncate text-sm text-slate-700">{name}</div>
+                <div key={d.destinationId} className="flex flex-col sm:flex-row sm:items-center gap-1.5 sm:gap-3">
+                  <div className="w-full sm:w-40 truncate text-sm text-slate-700">{name}</div>
                   <div className="flex-1 h-5 bg-slate-100 rounded-full overflow-hidden">
                     <div className="h-full bg-blue-500 rounded-full flex items-center justify-end pr-2" style={{ width: `${Math.max(pct, 8)}%` }}>
                       <span className="text-[10px] font-bold text-white">{d._count.destinationId}</span>
@@ -101,15 +101,15 @@ export default function AnalyticsDashboard({ buildingId, storeNames }: Props) {
         ) : (
           <div className="divide-y divide-slate-100 max-h-72 overflow-y-auto">
             {data.recentEvents.map((e) => (
-              <div key={e.id} className="flex items-center gap-3 py-2 text-sm">
+              <div key={e.id} className="grid grid-cols-[auto_1fr] sm:flex sm:items-center gap-x-2 gap-y-1 sm:gap-3 py-2 text-sm">
                 <span className={`w-2 h-2 rounded-full flex-shrink-0 ${
                   e.eventType === "qr_scan" ? "bg-blue-500" : e.eventType === "route_requested" ? "bg-violet-500" : "bg-emerald-500"
                 }`} />
-                <span className="text-slate-700 w-36 flex-shrink-0">{EVENT_LABEL[e.eventType] ?? e.eventType}</span>
-                <span className="text-slate-500 flex-1 truncate">
+                <span className="text-slate-700 sm:w-36 sm:flex-shrink-0">{EVENT_LABEL[e.eventType] ?? e.eventType}</span>
+                <span className="col-start-2 text-slate-500 sm:flex-1 truncate">
                   {e.destinationId ? (storeNames[e.destinationId] ?? "—") : "—"}
                 </span>
-                <span className="text-slate-400 text-xs flex-shrink-0">
+                <span className="col-start-2 text-slate-400 text-xs flex-shrink-0">
                   {new Date(e.createdAt).toLocaleString()}
                 </span>
               </div>

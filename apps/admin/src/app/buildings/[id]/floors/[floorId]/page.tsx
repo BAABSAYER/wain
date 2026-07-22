@@ -24,7 +24,9 @@ export default function FloorEditorPage() {
   const [floor, setFloor] = useState<any>(null);
   const [qrCodes, setQrCodes] = useState<QRCode[]>([]);
   const [isSaving, setIsSaving] = useState(false);
-  const [dimensions, setDimensions] = useState({ w: 800, h: 600 });
+  const [dimensions, setDimensions] = useState({ w: 400, h: 400 });
+  const [canvasHost, setCanvasHost] = useState<HTMLDivElement | null>(null);
+  const [mobilePanel, setMobilePanel] = useState<"floor" | "properties" | null>(null);
   const [cadImportOpen, setCadImportOpen] = useState(false);
 
   // Modal: QR generation prompt when user clicks a node with the QR tool
@@ -49,16 +51,19 @@ export default function FloorEditorPage() {
     toggleExtraSelection(roomId);
   };
 
-  // Track viewport size for canvas
+  // Measure the real canvas area. On mobile the sidebars become overlays, so
+  // subtracting desktop widths from window.innerWidth would overflow badly.
   useEffect(() => {
-    const measure = () => setDimensions({
-      w: Math.max(400, window.innerWidth - 224 - 256),
-      h: Math.max(400, window.innerHeight - 56),
-    });
+    if (!canvasHost) return;
+    const measure = () => {
+      const rect = canvasHost.getBoundingClientRect();
+      setDimensions({ w: Math.max(1, Math.floor(rect.width)), h: Math.max(1, Math.floor(rect.height)) });
+    };
+    const observer = new ResizeObserver(measure);
+    observer.observe(canvasHost);
     measure();
-    window.addEventListener("resize", measure);
-    return () => window.removeEventListener("resize", measure);
-  }, []);
+    return () => observer.disconnect();
+  }, [canvasHost]);
 
   const refreshQR = useCallback(async () => {
     const list = await api.getQRCodes(buildingId).catch(() => []);
@@ -234,12 +239,16 @@ export default function FloorEditorPage() {
   if (!floor) return <div className="p-8 text-slate-400 min-h-screen">Loading floor…</div>;
 
   return (
-    <div className="h-screen flex flex-col overflow-hidden bg-slate-50">
+    <div className="h-dvh flex flex-col overflow-hidden bg-slate-50">
       <Toolbar onSave={handleSave} isSaving={isSaving} isDirty={isDirty} buildingHref={`/buildings/${buildingId}`} />
 
-      <div className="flex flex-1 overflow-hidden">
+      <div className="relative flex flex-1 min-h-0 overflow-hidden">
         {/* Left sidebar: floor info + rooms + QR list */}
-        <aside className="w-56 bg-white border-r border-slate-200 flex flex-col overflow-y-auto shrink-0">
+        <aside className={`${mobilePanel === "floor" ? "flex" : "hidden"} absolute inset-x-0 bottom-0 z-40 max-h-[72%] w-full bg-white border-t border-slate-200 pb-[env(safe-area-inset-bottom)] flex-col overflow-y-auto shadow-2xl lg:static lg:z-auto lg:flex lg:max-h-none lg:w-56 lg:border-t-0 lg:border-r lg:pb-0 lg:shadow-none lg:shrink-0`}>
+          <div className="sticky top-0 z-10 flex items-center justify-between border-b border-slate-200 bg-white px-3 py-2 lg:hidden">
+            <span className="text-sm font-semibold text-slate-900">Floor contents</span>
+            <button type="button" onClick={() => setMobilePanel(null)} aria-label="Close floor panel" className="w-9 h-9 flex items-center justify-center text-xl text-slate-500">×</button>
+          </div>
           <div className="p-3 border-b border-slate-200">
             <Link href={`/buildings/${buildingId}`} className="text-xs text-slate-400 hover:text-slate-600">
               ← Back to floors
@@ -428,19 +437,39 @@ export default function FloorEditorPage() {
         </aside>
 
         {/* Center: canvas */}
-        <MapCanvas
-          floorPlanUrl={floor.floorPlanUrl ?? undefined}
-          floorWidth={floor.width}
-          floorHeight={floor.height}
-          canvasWidth={dimensions.w}
-          canvasHeight={dimensions.h}
-          onCreateQR={handleCreateQRFromNode}
-        />
+        <div ref={setCanvasHost} className="relative flex flex-1 min-w-0 min-h-0 overflow-hidden">
+          <MapCanvas
+            floorPlanUrl={floor.floorPlanUrl ?? undefined}
+            floorWidth={floor.width}
+            floorHeight={floor.height}
+            canvasWidth={dimensions.w}
+            canvasHeight={dimensions.h}
+            onCreateQR={handleCreateQRFromNode}
+          />
+
+          <div className="absolute inset-x-3 bottom-[calc(0.75rem+env(safe-area-inset-bottom))] z-30 grid grid-cols-2 gap-2 lg:hidden">
+            <button
+              type="button"
+              onClick={() => setMobilePanel((panel) => panel === "floor" ? null : "floor")}
+              className="h-11 bg-white border border-slate-200 shadow-lg rounded-lg text-sm font-semibold text-slate-700"
+            >
+              Floor · {stores.length} rooms
+            </button>
+            <button
+              type="button"
+              onClick={() => setMobilePanel((panel) => panel === "properties" ? null : "properties")}
+              className={`h-11 border shadow-lg rounded-lg text-sm font-semibold ${selectedId ? "bg-blue-500 border-blue-500 text-white" : "bg-white border-slate-200 text-slate-700"}`}
+            >
+              Properties{selectedId ? " · Selected" : ""}
+            </button>
+          </div>
+        </div>
 
         {/* Right: properties */}
-        <aside className="w-64 bg-white border-l border-slate-200 overflow-y-auto shrink-0">
-          <div className="p-3 border-b border-slate-200 text-xs text-slate-500 font-semibold uppercase tracking-wider">
-            Properties
+        <aside className={`${mobilePanel === "properties" ? "block" : "hidden"} absolute inset-x-0 bottom-0 z-40 max-h-[72%] w-full bg-white border-t border-slate-200 pb-[env(safe-area-inset-bottom)] overflow-y-auto shadow-2xl lg:static lg:z-auto lg:block lg:max-h-none lg:w-64 lg:border-t-0 lg:border-l lg:pb-0 lg:shadow-none lg:shrink-0`}>
+          <div className="sticky top-0 z-10 flex items-center justify-between bg-white p-3 border-b border-slate-200 text-xs text-slate-500 font-semibold uppercase tracking-wider">
+            <span>Properties</span>
+            <button type="button" onClick={() => setMobilePanel(null)} aria-label="Close properties" className="w-9 h-9 -my-2 flex items-center justify-center text-xl text-slate-500 lg:hidden">×</button>
           </div>
           <PropertiesPanel floors={building?.floors ?? []} currentFloorId={floorId} />
         </aside>

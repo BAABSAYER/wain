@@ -47,7 +47,7 @@ export default function NorthSetting({ buildingId, initial }: Props) {
   };
 
   return (
-    <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm flex items-center gap-5">
+    <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm flex flex-col sm:flex-row items-center gap-4 sm:gap-5">
       {/* Dial */}
       <div
         ref={dialRef}
@@ -73,7 +73,7 @@ export default function NorthSetting({ buildingId, initial }: Props) {
       </div>
 
       {/* Controls */}
-      <div className="flex-1">
+      <div className="w-full sm:flex-1 min-w-0">
         <div className="flex items-center gap-2">
           <span className="text-xs uppercase tracking-wider text-slate-500 font-semibold">North direction</span>
           {saved === "saving" && <span className="text-[11px] text-slate-400">saving…</span>}

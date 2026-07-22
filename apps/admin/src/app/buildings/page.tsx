@@ -41,24 +41,24 @@ export default function BuildingsPage() {
   };
 
   return (
-    <main className="max-w-4xl mx-auto p-8 min-h-screen">
-      <div className="flex items-center justify-between mb-8">
+    <main className="max-w-4xl mx-auto px-4 py-5 sm:p-8 min-h-screen">
+      <div className="flex items-start justify-between gap-4 mb-6 sm:mb-8">
         <div>
           <h1 className="text-2xl font-bold text-slate-900">Buildings</h1>
           <p className="text-slate-500 text-sm mt-1">Manage your indoor spaces</p>
         </div>
         <button
           onClick={() => setShowForm(!showForm)}
-          className="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg text-sm font-medium shadow-sm"
+          className="flex-shrink-0 px-3 sm:px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg text-sm font-medium shadow-sm whitespace-nowrap"
         >
           + New Building
         </button>
       </div>
 
       {showForm && (
-        <form onSubmit={handleCreate} className="bg-white border border-slate-200 rounded-xl p-6 mb-6 flex flex-col gap-4 shadow-sm">
+        <form onSubmit={handleCreate} className="bg-white border border-slate-200 rounded-xl p-4 sm:p-6 mb-6 flex flex-col gap-4 shadow-sm">
           <h2 className="font-semibold text-slate-900">Create Building</h2>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <label className="flex flex-col gap-1">
               <span className="text-xs text-slate-500 font-medium">Name (EN)</span>
               <input required className="bg-white border border-slate-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 rounded px-3 py-2 text-sm text-slate-900 outline-none" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
@@ -92,9 +92,9 @@ export default function BuildingsPage() {
           {buildings.map((b) => (
             <div
               key={b.id}
-              className="bg-white border border-slate-200 hover:border-blue-300 hover:bg-blue-50/50 rounded-xl flex items-center transition-colors shadow-sm"
+              className="bg-white border border-slate-200 hover:border-blue-300 hover:bg-blue-50/50 rounded-xl flex flex-col sm:flex-row sm:items-center transition-colors shadow-sm overflow-hidden"
             >
-              <Link href={`/buildings/${b.id}`} className="flex-1 p-5 flex items-center justify-between min-w-0">
+              <Link href={`/buildings/${b.id}`} className="w-full sm:flex-1 p-4 sm:p-5 flex items-center justify-between min-w-0">
                 <div className="min-w-0">
                   <div className="font-semibold text-slate-900 truncate">{b.name}</div>
                   <div className="text-slate-500 text-sm truncate" dir="rtl">{b.nameAr}</div>
@@ -102,7 +102,7 @@ export default function BuildingsPage() {
                 </div>
                 <span className="text-slate-400 text-xl ml-3 flex-shrink-0">›</span>
               </Link>
-              <div className="flex items-center gap-1 pr-3 pl-1">
+              <div className="w-full sm:w-auto flex items-center justify-end gap-1 px-3 py-2 sm:py-0 sm:pr-3 sm:pl-1 border-t sm:border-t-0 border-slate-100">
                 <button
                   type="button"
                   onClick={() => handleRename(b)}

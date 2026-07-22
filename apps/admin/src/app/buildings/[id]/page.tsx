@@ -231,14 +231,14 @@ export default function BuildingPage() {
     : [];
 
   return (
-    <main className="max-w-5xl mx-auto p-8 min-h-screen">
+    <main className="max-w-5xl mx-auto px-4 py-5 sm:p-8 min-h-screen overflow-x-hidden">
       <div className="mb-2">
         <Link href="/buildings" className="text-slate-400 hover:text-slate-600 text-sm">← Buildings</Link>
       </div>
-      <div className="flex items-start justify-between mb-6">
-        <div>
-          <h1 className="text-3xl font-bold text-slate-900">{building.name}</h1>
-          <p className="text-slate-500 text-lg" dir="rtl">{building.nameAr}</p>
+      <div className="flex items-start justify-between mb-6 min-w-0">
+        <div className="min-w-0">
+          <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 break-words">{building.name}</h1>
+          <p className="text-slate-500 text-base sm:text-lg break-words" dir="rtl">{building.nameAr}</p>
           {building.address && <p className="text-slate-400 text-sm mt-1">{building.address}</p>}
         </div>
       </div>
@@ -263,7 +263,7 @@ export default function BuildingPage() {
         {showFloorForm && (
           <form onSubmit={handleCreateFloor} className="bg-white border border-slate-200 rounded-xl p-5 mb-4 flex flex-col gap-3 shadow-sm">
             <h3 className="font-semibold text-slate-900">New Floor</h3>
-            <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
               <label className="flex flex-col gap-1">
                 <span className="text-xs text-slate-500 font-medium">Name (EN)</span>
                 <input required className="bg-white border border-slate-300 rounded px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500" value={floorForm.name} onChange={(e) => setFloorForm({ ...floorForm, name: e.target.value })} placeholder="Ground Floor" />
@@ -300,11 +300,11 @@ export default function BuildingPage() {
           {(building.floors ?? []).map((f: any) => (
             <div
               key={f.id}
-              className="bg-white border border-slate-200 hover:border-blue-300 hover:bg-blue-50/50 rounded-xl flex items-center transition-colors shadow-sm"
+              className="bg-white border border-slate-200 hover:border-blue-300 hover:bg-blue-50/50 rounded-xl flex flex-col sm:flex-row sm:items-center transition-colors shadow-sm overflow-hidden"
             >
               <Link
                 href={`/buildings/${id}/floors/${f.id}`}
-                className="flex-1 p-5 flex items-center justify-between min-w-0"
+                className="w-full sm:flex-1 p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 min-w-0"
               >
                 <div className="min-w-0">
                   <div className="font-semibold text-slate-900 truncate">
@@ -317,7 +317,7 @@ export default function BuildingPage() {
                 </div>
                 <span className="text-blue-500 text-sm font-medium ml-3 flex-shrink-0">Open Map Builder →</span>
               </Link>
-              <div className="flex items-center gap-1 pr-3 pl-1">
+              <div className="w-full sm:w-auto flex items-center justify-end gap-1 px-3 py-2 sm:py-0 sm:pr-3 sm:pl-1 border-t sm:border-t-0 border-slate-100">
                 <button
                   type="button"
                   onClick={() => openDuplicateFloor(f)}
@@ -428,7 +428,7 @@ export default function BuildingPage() {
         {qrCodes.length === 0 ? (
           <div className="text-slate-400 text-center py-8 bg-white border border-dashed border-slate-200 rounded-xl">No QR codes yet.</div>
         ) : (
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
             {qrCodes.map((qr) => {
               const floor = building.floors?.find((f: any) => f.id === qr.floorId);
               const navUrl = qr.nodeId ? `${publicAppUrl}/nav/${id}/${qr.floorId}/${qr.nodeId}` : null;
@@ -521,10 +521,10 @@ export default function BuildingPage() {
       {/* ───── Floor and QR modals ───── */}
       {duplicatingFloor && (
         <div
-          className="fixed inset-0 z-50 bg-slate-900/40 flex items-center justify-center p-4"
+          className="fixed inset-0 z-50 bg-slate-900/40 flex items-end sm:items-center justify-center p-0 sm:p-4"
           onMouseDown={(e) => { if (e.target === e.currentTarget) closeDuplicateFloor(); }}
         >
-          <form onSubmit={handleDuplicateFloor} className="bg-white rounded-2xl shadow-2xl w-full max-w-lg p-6 flex flex-col gap-4">
+          <form onSubmit={handleDuplicateFloor} className="bg-white rounded-t-xl sm:rounded-xl shadow-2xl w-full max-w-lg p-4 sm:p-6 flex flex-col gap-4 max-h-[90dvh] overflow-y-auto">
             <div>
               <h3 className="text-lg font-semibold text-slate-900">Duplicate floor</h3>
               <p className="text-xs text-slate-500 mt-1">
@@ -559,10 +559,10 @@ export default function BuildingPage() {
 
       {editingFloorId && (
         <div
-          className="fixed inset-0 z-50 bg-slate-900/40 flex items-center justify-center p-4"
+          className="fixed inset-0 z-50 bg-slate-900/40 flex items-end sm:items-center justify-center p-0 sm:p-4"
           onMouseDown={(e) => { if (e.target === e.currentTarget) closeEditFloor(); }}
         >
-          <form onSubmit={handleUpdateFloor} className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl p-6 flex flex-col gap-4">
+          <form onSubmit={handleUpdateFloor} className="bg-white rounded-t-xl sm:rounded-xl shadow-2xl w-full max-w-3xl p-4 sm:p-6 flex flex-col gap-4 max-h-[90dvh] overflow-y-auto">
             <div>
               <h3 className="text-lg font-semibold text-slate-900">Edit floor</h3>
               <p className="text-xs text-slate-500 mt-1">Update names, level, canvas size, and floor plan image URL.</p>
@@ -609,10 +609,10 @@ export default function BuildingPage() {
 
       {reassignQr && (
         <div
-          className="fixed inset-0 z-50 bg-slate-900/40 flex items-center justify-center p-4"
+          className="fixed inset-0 z-50 bg-slate-900/40 flex items-end sm:items-center justify-center p-0 sm:p-4"
           onMouseDown={(e) => { if (e.target === e.currentTarget) closeReassign(); }}
         >
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 flex flex-col gap-4">
+          <div className="bg-white rounded-t-xl sm:rounded-xl shadow-2xl w-full max-w-md p-4 sm:p-6 flex flex-col gap-4 max-h-[90dvh] overflow-y-auto">
             <div>
               <h3 className="text-lg font-semibold text-slate-900">Reassign QR code</h3>
               <p className="text-xs text-slate-500 mt-1 leading-relaxed">

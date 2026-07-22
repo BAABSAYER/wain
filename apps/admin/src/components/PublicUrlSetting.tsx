@@ -55,7 +55,7 @@ export default function PublicUrlSetting({ compact = false }: { compact?: boolea
         </div>
       </div>
 
-      <div className="mt-3 flex items-center gap-2">
+      <div className="mt-3 flex flex-wrap sm:flex-nowrap items-center gap-2">
         {editing ? (
           <>
             <input
@@ -64,14 +64,14 @@ export default function PublicUrlSetting({ compact = false }: { compact?: boolea
               onChange={(e) => setDraft(e.target.value)}
               onKeyDown={(e) => { if (e.key === "Enter") save(); if (e.key === "Escape") cancel(); }}
               placeholder="http://192.168.1.5:3000"
-              className="font-mono flex-1 bg-white border border-slate-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 rounded px-3 py-1.5 text-sm outline-none"
+              className="font-mono w-full sm:flex-1 min-w-0 bg-white border border-slate-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 rounded px-3 py-1.5 text-sm outline-none"
             />
             <button onClick={save} className="px-3 py-1.5 bg-blue-500 hover:bg-blue-600 text-white rounded text-sm font-semibold">Save</button>
             <button onClick={cancel} className="px-3 py-1.5 text-slate-500 hover:text-slate-700 text-sm">Cancel</button>
           </>
         ) : (
           <>
-            <code className={`flex-1 font-mono px-3 py-1.5 rounded text-sm truncate ${isLocalhost ? "bg-amber-50 text-amber-900 border border-amber-200" : "bg-slate-50 text-slate-800 border border-slate-200"}`}>
+            <code className={`w-full sm:flex-1 min-w-0 font-mono px-3 py-1.5 rounded text-sm truncate ${isLocalhost ? "bg-amber-50 text-amber-900 border border-amber-200" : "bg-slate-50 text-slate-800 border border-slate-200"}`}>
               {url || "—"}
             </code>
             <button onClick={startEdit} className="px-3 py-1.5 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 rounded text-sm font-medium">Edit</button>

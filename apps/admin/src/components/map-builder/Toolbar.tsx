@@ -1,4 +1,5 @@
 "use client";
+import { useState } from "react";
 import type { DrawTool } from "@wain/types";
 import Link from "next/link";
 import { useMapBuilderStore } from "@/store/map-builder";
@@ -55,31 +56,41 @@ interface Props {
 
 export default function Toolbar({ onSave, isSaving, isDirty, buildingHref }: Props) {
   const { tool, setTool, activePreset, setActivePreset, activeAssetPreset, setActiveAssetPreset } = useMapBuilderStore();
+  const [assetPickerOpen, setAssetPickerOpen] = useState(false);
   const current = TOOLS.find((t) => t.id === tool);
 
+  const selectTool = (nextTool: DrawTool) => {
+    if (nextTool === "asset" && tool === "asset") {
+      setAssetPickerOpen(true);
+      return;
+    }
+    setTool(nextTool);
+    setAssetPickerOpen(nextTool === "asset");
+  };
+
   return (
-    <div className="relative flex items-center gap-3 px-4 h-14 bg-white border-b border-slate-200 shrink-0 shadow-sm">
+    <div className="relative flex flex-wrap items-center gap-2 px-2 py-1 lg:gap-3 lg:px-4 lg:py-0 lg:h-14 bg-white border-b border-slate-200 shrink-0 shadow-sm">
       {buildingHref ? (
         <Link href={buildingHref} className="text-blue-500 hover:text-blue-700 text-sm font-medium">
           ← Back
         </Link>
       ) : null}
-      <span className="text-blue-600 font-bold text-base mr-2">Wain Map Builder</span>
+      <span className="hidden sm:inline text-blue-600 font-bold text-base lg:mr-2">Wain Map Builder</span>
 
-      <div className="flex gap-1 bg-slate-100 rounded-lg p-1">
+      <div className="order-last w-full flex gap-1 overflow-x-auto bg-slate-100 rounded-lg p-1 lg:order-none lg:w-auto lg:overflow-visible">
         {TOOLS.map((t) => (
           <button
             key={t.id}
-            onClick={() => setTool(t.id)}
+            onClick={() => selectTool(t.id)}
             title={t.hint}
-            className={`px-3 py-1.5 rounded text-sm font-medium transition-colors ${
+            className={`flex-shrink-0 px-3 py-1.5 rounded text-sm font-medium transition-colors ${
               tool === t.id
                 ? "bg-blue-500 text-white shadow-sm"
                 : "text-slate-600 hover:text-slate-900 hover:bg-white"
             }`}
           >
             <span className="mr-1">{t.icon}</span>
-            <span className="hidden sm:inline">{t.label}</span>
+            <span>{t.label}</span>
           </button>
         ))}
       </div>
@@ -88,12 +99,12 @@ export default function Toolbar({ onSave, isSaving, isDirty, buildingHref }: Pro
         <span className="hidden md:inline text-xs text-slate-500 ml-2 truncate">{current.hint}</span>
       )}
 
-      <div className="ml-auto flex items-center gap-3">
-        {isDirty && <span className="text-xs text-amber-600 font-medium">● Unsaved changes</span>}
+      <div className="ml-auto flex items-center gap-2 lg:gap-3 min-w-0">
+        {isDirty && <span className="hidden sm:inline text-xs text-amber-600 font-medium truncate">● Unsaved changes</span>}
         <button
           onClick={onSave}
           disabled={isSaving || !isDirty}
-          className="px-4 py-1.5 bg-blue-500 hover:bg-blue-600 text-white disabled:opacity-40 disabled:cursor-not-allowed rounded-lg text-sm font-medium shadow-sm transition-colors"
+          className="px-3 lg:px-4 py-1.5 bg-blue-500 hover:bg-blue-600 text-white disabled:opacity-40 disabled:cursor-not-allowed rounded-lg text-sm font-medium shadow-sm transition-colors whitespace-nowrap"
         >
           {isSaving ? "Saving…" : "Save Map"}
         </button>
@@ -101,7 +112,7 @@ export default function Toolbar({ onSave, isSaving, isDirty, buildingHref }: Pro
 
       {/* Preset popover — visible only when Shape tool is active */}
       {tool === "shape" && (
-        <div className="absolute top-full left-0 right-0 z-20 bg-white border-b border-slate-200 shadow-md px-4 py-3 flex items-center gap-3 overflow-x-auto">
+        <div className="absolute top-full left-0 right-0 z-50 bg-white border-b border-slate-200 shadow-md px-3 lg:px-4 py-3 flex items-center gap-3 overflow-x-auto">
           <span className="text-xs font-semibold uppercase tracking-wider text-slate-500 flex-shrink-0">
             Pick a preset:
           </span>
@@ -131,11 +142,20 @@ export default function Toolbar({ onSave, isSaving, isDirty, buildingHref }: Pro
         </div>
       )}
 
-      {tool === "asset" && (
-        <div className="absolute top-full left-0 right-0 z-20 bg-white border-b border-slate-200 shadow-md px-4 py-3 max-h-72 overflow-y-auto">
+      {tool === "asset" && assetPickerOpen && (
+        <div className="absolute top-full left-0 right-0 z-50 bg-white border-b border-slate-200 shadow-md px-3 lg:px-4 py-3 max-h-[55vh] lg:max-h-72 overflow-y-auto">
+          <button
+            type="button"
+            onClick={() => setAssetPickerOpen(false)}
+            className="sticky top-0 z-10 ml-auto mb-1 flex h-9 w-9 items-center justify-center rounded-full bg-white border border-slate-200 text-xl text-slate-500 shadow-sm hover:text-slate-900"
+            aria-label="Close asset library"
+            title="Close asset library"
+          >
+            &times;
+          </button>
           {(["symbol", "furniture"] as const).map((group) => (
-            <div key={group} className="flex items-start gap-3 py-1.5">
-              <span className="w-36 pt-2 text-xs font-semibold uppercase text-slate-500 flex-shrink-0">
+            <div key={group} className="flex flex-col lg:flex-row lg:items-start gap-2 lg:gap-3 py-1.5">
+              <span className="lg:w-36 lg:pt-2 text-xs font-semibold uppercase text-slate-500 flex-shrink-0">
                 {group === "symbol" ? "Map Symbols" : "3D Objects & Furniture"}
               </span>
               <div className="flex flex-wrap gap-2">
@@ -144,7 +164,10 @@ export default function Toolbar({ onSave, isSaving, isDirty, buildingHref }: Pro
                   return (
                     <button
                       key={preset.id}
-                      onClick={() => setActiveAssetPreset(active ? null : preset.id)}
+                      onClick={() => {
+                        setActiveAssetPreset(preset.id);
+                        setAssetPickerOpen(false);
+                      }}
                       title={preset.label}
                       className={`flex items-center gap-2 min-w-36 px-2.5 py-1.5 rounded border text-sm font-medium transition-colors ${
                         active

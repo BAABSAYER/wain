@@ -72,6 +72,8 @@ export default function MapCanvas({
   const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
   const [isSpacePanning, setIsSpacePanning] = useState(false);
   const [isStageDragging, setIsStageDragging] = useState(false);
+  const lastTouchCenterRef = useRef<Point | null>(null);
+  const lastTouchDistanceRef = useRef(0);
 
   const {
     tool, selectedId, selectedKind, extraSelectedIds, stores, assets, nodes, edges,
@@ -181,7 +183,7 @@ export default function MapCanvas({
     });
     stage.batchDraw();
 
-  }, [floorWidth, floorHeight]); // intentional, run only on dim change
+  }, [floorWidth, floorHeight, canvasWidth, canvasHeight]);
 
   const getStagePos = useCallback(() => {
     const stage = stageRef.current;
@@ -354,6 +356,44 @@ export default function MapCanvas({
       x: pointer.x - mousePt.x * newScale,
       y: pointer.y - mousePt.y * newScale,
     });
+  }, []);
+
+  // Two-finger pinch zoom for phones/tablets, anchored between the fingers.
+  const handleTouchMove = useCallback((e: any) => {
+    const touches = e.evt.touches;
+    if (touches.length !== 2) return;
+    e.evt.preventDefault();
+
+    const stage = stageRef.current;
+    if (stage.isDragging()) {
+      stage.stopDrag();
+      setIsStageDragging(false);
+    }
+    const rect = stage.container().getBoundingClientRect();
+    const p1 = { x: touches[0].clientX - rect.left, y: touches[0].clientY - rect.top };
+    const p2 = { x: touches[1].clientX - rect.left, y: touches[1].clientY - rect.top };
+    const center = { x: (p1.x + p2.x) / 2, y: (p1.y + p2.y) / 2 };
+    const distance = Math.hypot(p2.x - p1.x, p2.y - p1.y);
+
+    if (lastTouchCenterRef.current && lastTouchDistanceRef.current > 0) {
+      const oldScale = stage.scaleX();
+      const point = {
+        x: (lastTouchCenterRef.current.x - stage.x()) / oldScale,
+        y: (lastTouchCenterRef.current.y - stage.y()) / oldScale,
+      };
+      const nextScale = Math.min(Math.max(oldScale * distance / lastTouchDistanceRef.current, 0.05), 8);
+      stage.scale({ x: nextScale, y: nextScale });
+      stage.position({ x: center.x - point.x * nextScale, y: center.y - point.y * nextScale });
+      stage.batchDraw();
+    }
+
+    lastTouchCenterRef.current = center;
+    lastTouchDistanceRef.current = distance;
+  }, []);
+
+  const handleTouchEnd = useCallback(() => {
+    lastTouchCenterRef.current = null;
+    lastTouchDistanceRef.current = 0;
   }, []);
 
   // Holding Space temporarily turns the current tool into a hand tool. The
@@ -710,7 +750,7 @@ export default function MapCanvas({
   return (
     <div
       className="flex-1 overflow-hidden bg-slate-100 relative"
-      style={{ cursor: tool === "pan" || isSpacePanning ? (isStageDragging ? "grabbing" : "grab") : "crosshair" }}
+      style={{ cursor: tool === "pan" || isSpacePanning ? (isStageDragging ? "grabbing" : "grab") : "crosshair", touchAction: "none" }}
       onContextMenu={(e) => { e.preventDefault(); }}
     >
       {gridSnapToggle}
@@ -775,9 +815,13 @@ export default function MapCanvas({
           if (e.target === stageRef.current) setIsStageDragging(false);
         }}
         onClick={handleStageClick}
+        onTap={handleStageClick}
         onDblClick={handleStageDblClick}
+        onDblTap={handleStageDblClick}
         onMouseMove={handleMouseMove}
         onWheel={handleWheel}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
       >
         {/* Background floor surface */}
         <Layer>
