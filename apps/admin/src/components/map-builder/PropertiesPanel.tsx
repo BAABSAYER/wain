@@ -34,8 +34,8 @@ interface Props {
 
 export default function PropertiesPanel({ floors = [], currentFloorId }: Props) {
   const {
-    selectedId, selectedKind, extraSelectedIds, stores, assets, nodes, edges,
-    updateStore, removeStore, updateAsset, removeAsset, updateNode, removeNode, removeEdge,
+    selectedId, selectedKind, extraSelectedIds, stores, assets, outdoorFeatures, nodes, edges,
+    updateStore, removeStore, updateAsset, removeAsset, updateOutdoorFeature, removeOutdoorFeature, updateNode, removeNode, removeEdge,
     enterLinkMode, toggleStoreNavLink, setStoreNavLinks, linkModeStoreId,
   } = useMapBuilderStore();
 
@@ -60,6 +60,7 @@ export default function PropertiesPanel({ floors = [], currentFloorId }: Props) 
 
   const store = selectedKind === "store" ? stores.find((s) => s.id === selectedId) : null;
   const asset = selectedKind === "asset" ? assets.find((a) => a.id === selectedId) : null;
+  const outdoor = selectedKind === "outdoor" ? outdoorFeatures.find((item) => item.id === selectedId) : null;
   const node  = selectedKind === "node"  ? nodes.find((n) => n.id === selectedId)  : null;
   const edge  = selectedKind === "edge"  ? edges.find((e) => e.id === selectedId)  : null;
 
@@ -288,6 +289,57 @@ export default function PropertiesPanel({ floors = [], currentFloorId }: Props) 
           className="mt-2 px-3 py-1.5 bg-red-50 hover:bg-red-100 border border-red-200 rounded text-sm text-red-700 font-medium"
         >
           Delete Room
+        </button>
+      </div>
+    );
+  }
+
+  if (outdoor) {
+    const numberField = (label: string, key: "width" | "laneCount" | "parkingAngle" | "stallWidth" | "stallDepth", min: number, max: number) => (
+      <label className="flex flex-col gap-1">
+        <span className="text-xs text-slate-500 font-medium">{label}</span>
+        <input
+          type="number"
+          min={min}
+          max={max}
+          value={outdoor[key]}
+          onChange={(event) => updateOutdoorFeature(outdoor.id, { [key]: Number(event.target.value) })}
+          className="bg-white border border-slate-300 rounded px-3 py-1.5 text-sm text-slate-900"
+        />
+      </label>
+    );
+    return (
+      <div className="p-4 flex flex-col gap-4">
+        <h3 className="font-semibold text-slate-900">Outdoor Surface</h3>
+        <label className="flex flex-col gap-1">
+          <span className="text-xs text-slate-500 font-medium">Label</span>
+          <input value={outdoor.label ?? ""} onChange={(event) => updateOutdoorFeature(outdoor.id, { label: event.target.value })} className="bg-white border border-slate-300 rounded px-3 py-1.5 text-sm" />
+        </label>
+        <label className="flex flex-col gap-1">
+          <span className="text-xs text-slate-500 font-medium">Type</span>
+          <select value={outdoor.type} onChange={(event) => updateOutdoorFeature(outdoor.id, { type: event.target.value as any })} className="bg-white border border-slate-300 rounded px-3 py-1.5 text-sm">
+            {["road", "parking", "sidewalk", "crosswalk", "landscape"].map((type) => <option key={type}>{type}</option>)}
+          </select>
+        </label>
+        {numberField("Width", "width", 4, 400)}
+        {outdoor.type === "road" && numberField("Lanes", "laneCount", 1, 8)}
+        {outdoor.type === "parking" && (
+          <>
+            {numberField("Parking angle", "parkingAngle", 0, 90)}
+            {numberField("Stall width", "stallWidth", 8, 80)}
+            {numberField("Stall depth", "stallDepth", 12, 120)}
+          </>
+        )}
+        <label className="flex items-center justify-between gap-3 text-xs text-slate-500">
+          Surface color
+          <input type="color" value={outdoor.color ?? "#d9dde3"} onChange={(event) => updateOutdoorFeature(outdoor.id, { color: event.target.value })} />
+        </label>
+        <label className="flex items-center justify-between gap-3 text-xs text-slate-500">
+          Marking color
+          <input type="color" value={outdoor.lineColor ?? "#ffffff"} onChange={(event) => updateOutdoorFeature(outdoor.id, { lineColor: event.target.value })} />
+        </label>
+        <button onClick={() => removeOutdoorFeature(outdoor.id)} className="mt-2 px-3 py-2 text-sm font-medium text-red-600 border border-red-200 rounded hover:bg-red-50">
+          Delete surface
         </button>
       </div>
     );

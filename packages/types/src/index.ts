@@ -101,7 +101,13 @@ export type AssetType =
   | "table"
   | "trashcan"
   | "floor_lamp"
-  | "potted_plant";
+  | "potted_plant"
+  | "car"
+  | "streetlight"
+  | "bollard"
+  | "bus_shelter"
+  | "bike_rack"
+  | "gate";
 
 export interface Asset {
   id: string;
@@ -190,7 +196,23 @@ export interface ApiError {
 
 // ─── Map Builder canvas types ─────────────────────────────────────────────────
 
-export type DrawTool = "select" | "polygon" | "shape" | "asset" | "node" | "edge" | "qr" | "pan";
+export type OutdoorFeatureType = "road" | "parking" | "sidewalk" | "landscape" | "crosswalk";
+
+export interface CanvasOutdoorFeature {
+  id: string;
+  type: OutdoorFeatureType;
+  label?: string;
+  points: Point2D[];
+  width: number;
+  color?: string | null;
+  lineColor?: string | null;
+  laneCount: number;
+  parkingAngle: number;
+  stallWidth: number;
+  stallDepth: number;
+}
+
+export type DrawTool = "select" | "polygon" | "shape" | "asset" | "outdoor" | "node" | "edge" | "qr" | "pan";
 
 export interface CanvasStore {
   id: string;
@@ -241,6 +263,7 @@ export interface CanvasEdge {
 export interface CanvasState {
   stores: CanvasStore[];
   assets: CanvasAsset[];
+  outdoorFeatures: CanvasOutdoorFeature[];
   nodes: CanvasNode[];
   edges: CanvasEdge[];
   qrPoints: Array<{ id: string; nodeId: string; label: string }>;

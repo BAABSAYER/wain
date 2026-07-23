@@ -34,6 +34,19 @@ interface AssetData {
   modelUrl?: string | null;
   navNodeId?: string | null;
 }
+interface OutdoorFeatureData {
+  id: string;
+  type: string;
+  label?: string | null;
+  points: Array<{ x: number; y: number }>;
+  width: number;
+  color?: string | null;
+  lineColor?: string | null;
+  laneCount?: number;
+  parkingAngle?: number;
+  stallWidth?: number;
+  stallDepth?: number;
+}
 
 // Amenity categories → badge icon + color (wayfinding highlights)
 function amenityBadge(s: StoreData): { icon: string; bg: string } | null {
@@ -101,6 +114,7 @@ export interface SceneProjectionInfo {
 interface Props {
   stores: StoreData[];
   assets?: AssetData[];
+  outdoorFeatures?: OutdoorFeatureData[];
   routeSteps: RouteStep[];
   destinationId: string | null;
   selectedId: string | null;
@@ -154,6 +168,31 @@ function makeToLngLat(w: number, h: number) {
     const my = (h / 2 - y) * METERS_PER_UNIT; // flip y (page down → lat up)
     return [mx * DEG_PER_M_LNG, my * DEG_PER_M_LAT];
   };
+}
+
+function ribbonRing(points: Array<{ x: number; y: number }>, width: number) {
+  if (points.length < 2) return [];
+  const half = width / 2;
+  const normals = points.map((point, index) => {
+    const before = points[Math.max(0, index - 1)];
+    const after = points[Math.min(points.length - 1, index + 1)];
+    const dx = after.x - before.x;
+    const dy = after.y - before.y;
+    const length = Math.hypot(dx, dy) || 1;
+    return { x: -dy / length, y: dx / length };
+  });
+  const left = points.map((point, index) => ({ x: point.x + normals[index].x * half, y: point.y + normals[index].y * half }));
+  const right = points.map((point, index) => ({ x: point.x - normals[index].x * half, y: point.y - normals[index].y * half })).reverse();
+  return [...left, ...right, left[0]];
+}
+
+function pointInPolygon(point: { x: number; y: number }, polygon: Array<{ x: number; y: number }>) {
+  let inside = false;
+  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+    const a = polygon[i], b = polygon[j];
+    if ((a.y > point.y) !== (b.y > point.y) && point.x < ((b.x - a.x) * (point.y - a.y)) / (b.y - a.y || 1) + a.x) inside = !inside;
+  }
+  return inside;
 }
 
 function heightMeters(s: StoreData): number {
@@ -245,6 +284,12 @@ const ASSET_MODEL_PRESETS: Record<string, AssetModelPreset> = {
   tree: { url: "/models/map-assets/tree.glb", footprintMeters: 3.6 },
   elevator: { url: "/models/map-assets/elevator.glb", footprintMeters: 2.4 },
   stairs: { url: "/models/map-assets/stairs.glb", footprintMeters: 3.2 },
+  car: { url: "/models/map-assets/car.glb", footprintMeters: 4.5 },
+  streetlight: { url: "/models/map-assets/streetlight.glb", footprintMeters: 1.2 },
+  bollard: { url: "/models/map-assets/bollard.glb", footprintMeters: 0.5 },
+  bus_shelter: { url: "/models/map-assets/bus-shelter.glb", footprintMeters: 4.5 },
+  bike_rack: { url: "/models/map-assets/bike-rack.glb", footprintMeters: 2.5 },
+  gate: { url: "/models/map-assets/gate.glb", footprintMeters: 4 },
   escalator: { url: "/models/map-assets/escalator.glb", footprintMeters: 3.4 },
   reception: { url: "/models/map-assets/reception.glb", footprintMeters: 3.2 },
   info: { url: "/models/map-assets/info.glb", footprintMeters: 1.4 },
@@ -510,7 +555,7 @@ function createThreeAssetLayer(
 }
 
 const BuildingMap = forwardRef<BuildingMapHandle, Props>(function BuildingMap(
-  { stores, assets = [], routeSteps, destinationId, selectedId, highlightCategory = null, floorWidth, floorHeight,
+  { stores, assets = [], outdoorFeatures = [], routeSteps, destinationId, selectedId, highlightCategory = null, floorWidth, floorHeight,
     origin, focus, heading, initialAzimuth, locale = "en", navEdges = [], onProjection, onBlockClick },
   ref,
 ) {
@@ -634,6 +679,80 @@ const BuildingMap = forwardRef<BuildingMapHandle, Props>(function BuildingMap(
       }),
   }), [stores, toLngLat]);
 
+  const outdoorAreasFC = useMemo(() => ({
+    type: "FeatureCollection" as const,
+    features: outdoorFeatures.flatMap((feature) => {
+      const polygonTypes = new Set(["parking", "landscape"]);
+      const ring = polygonTypes.has(feature.type)
+        ? [...feature.points, feature.points[0]]
+        : ribbonRing(feature.points, feature.width);
+      if (ring.length < 4) return [];
+      return [{
+        type: "Feature" as const,
+        id: feature.id,
+        properties: {
+          id: feature.id,
+          type: feature.type,
+          color: feature.color || (feature.type === "landscape" ? "#b7d7a8" : feature.type === "road" ? "#cfd2d6" : "#e3e5e8"),
+        },
+        geometry: { type: "Polygon" as const, coordinates: [ring.map((point) => toLngLat(point.x, point.y))] },
+      }];
+    }),
+  }), [outdoorFeatures, toLngLat]);
+
+  const outdoorMarkingsFC = useMemo(() => {
+    const features: any[] = [];
+    for (const feature of outdoorFeatures) {
+      const color = feature.lineColor || "#ffffff";
+      if (feature.type === "road" && feature.points.length >= 2) {
+        const lanes = Math.max(1, feature.laneCount ?? 2);
+        for (let divider = 1; divider < lanes; divider++) {
+          const offset = (divider / lanes - 0.5) * feature.width;
+          const shifted = feature.points.map((point, index) => {
+            const before = feature.points[Math.max(0, index - 1)];
+            const after = feature.points[Math.min(feature.points.length - 1, index + 1)];
+            const dx = after.x - before.x;
+            const dy = after.y - before.y;
+            const length = Math.hypot(dx, dy) || 1;
+            return { x: point.x - dy / length * offset, y: point.y + dx / length * offset };
+          });
+          features.push({
+            type: "Feature", properties: { type: "road", color },
+            geometry: { type: "LineString", coordinates: shifted.map((point) => toLngLat(point.x, point.y)) },
+          });
+        }
+      }
+      if (feature.type === "crosswalk" && feature.points.length >= 2) {
+        features.push({
+          type: "Feature", properties: { type: "crosswalk", color },
+          geometry: { type: "LineString", coordinates: feature.points.map((point) => toLngLat(point.x, point.y)) },
+        });
+      }
+      if (feature.type === "parking" && feature.points.length >= 3) {
+        const xs = feature.points.map((point) => point.x);
+        const ys = feature.points.map((point) => point.y);
+        const center = { x: (Math.min(...xs) + Math.max(...xs)) / 2, y: (Math.min(...ys) + Math.max(...ys)) / 2 };
+        const angle = ((feature.parkingAngle ?? 90) * Math.PI) / 180;
+        const along = { x: Math.cos(angle), y: Math.sin(angle) };
+        const across = { x: -along.y, y: along.x };
+        const span = Math.hypot(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys));
+        const spacing = Math.max(8, feature.stallWidth ?? 24);
+        const depth = Math.max(12, feature.stallDepth ?? 48);
+        for (let offset = -span; offset <= span; offset += spacing) {
+          const midpoint = { x: center.x + across.x * offset, y: center.y + across.y * offset };
+          if (!pointInPolygon(midpoint, feature.points)) continue;
+          const a = { x: midpoint.x - along.x * depth / 2, y: midpoint.y - along.y * depth / 2 };
+          const b = { x: midpoint.x + along.x * depth / 2, y: midpoint.y + along.y * depth / 2 };
+          features.push({
+            type: "Feature", properties: { type: "parking", color },
+            geometry: { type: "LineString", coordinates: [toLngLat(a.x, a.y), toLngLat(b.x, b.y)] },
+          });
+        }
+      }
+    }
+    return { type: "FeatureCollection" as const, features };
+  }, [outdoorFeatures, toLngLat]);
+
   const routeFC = useMemo(() => ({
     type: "FeatureCollection" as const,
     features: routePoints.length >= 2 ? [{
@@ -741,6 +860,32 @@ const BuildingMap = forwardRef<BuildingMapHandle, Props>(function BuildingMap(
       map.addLayer({
         id: "floor-pattern", type: "fill", source: "floor",
         paint: { "fill-pattern": "floor-tile", "fill-opacity": 0.2 },
+      });
+      map.addSource("outdoor-areas", { type: "geojson", data: outdoorAreasFC });
+      map.addLayer({
+        id: "outdoor-areas-fill", type: "fill", source: "outdoor-areas",
+        paint: { "fill-color": ["coalesce", ["get", "color"], "#d9dde3"], "fill-opacity": 0.96 },
+      });
+      map.addLayer({
+        id: "outdoor-areas-outline", type: "line", source: "outdoor-areas",
+        paint: { "line-color": "#ffffff", "line-width": 1.2, "line-opacity": 0.85 },
+      });
+      map.addSource("outdoor-markings", { type: "geojson", data: outdoorMarkingsFC });
+      map.addLayer({
+        id: "outdoor-road-markings", type: "line", source: "outdoor-markings",
+        filter: ["==", ["get", "type"], "road"],
+        layout: { "line-cap": "butt", "line-join": "round" },
+        paint: { "line-color": ["coalesce", ["get", "color"], "#ffffff"], "line-width": 2, "line-dasharray": [3, 3], "line-opacity": 0.95 },
+      });
+      map.addLayer({
+        id: "outdoor-parking-markings", type: "line", source: "outdoor-markings",
+        filter: ["==", ["get", "type"], "parking"],
+        paint: { "line-color": ["coalesce", ["get", "color"], "#ffffff"], "line-width": 2, "line-opacity": 0.95 },
+      });
+      map.addLayer({
+        id: "outdoor-crosswalk-markings", type: "line", source: "outdoor-markings",
+        filter: ["==", ["get", "type"], "crosswalk"],
+        paint: { "line-color": ["coalesce", ["get", "color"], "#ffffff"], "line-width": 8, "line-dasharray": [1, 1], "line-opacity": 0.95 },
       });
       map.addSource("areas", { type: "geojson", data: areasFC, promoteId: "id" });
       map.addLayer({
@@ -994,6 +1139,13 @@ const BuildingMap = forwardRef<BuildingMapHandle, Props>(function BuildingMap(
     if (!map || !readyRef.current) return;
     (map.getSource("areas") as maplibregl.GeoJSONSource | undefined)?.setData(areasFC as any);
   }, [areasFC, ready]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !readyRef.current) return;
+    (map.getSource("outdoor-areas") as maplibregl.GeoJSONSource | undefined)?.setData(outdoorAreasFC as any);
+    (map.getSource("outdoor-markings") as maplibregl.GeoJSONSource | undefined)?.setData(outdoorMarkingsFC as any);
+  }, [outdoorAreasFC, outdoorMarkingsFC, ready]);
 
   useEffect(() => {
     const map = mapRef.current;

@@ -11,7 +11,7 @@ export class FloorsService {
     return this.prisma.floor.findMany({
       where: { buildingId },
       orderBy: { level: "asc" },
-      include: { stores: true, assets: true, navNodes: { include: { edgesFrom: true } } },
+      include: { stores: true, assets: true, outdoorFeatures: true, navNodes: { include: { edgesFrom: true } } },
     });
   }
 
@@ -21,6 +21,7 @@ export class FloorsService {
       include: {
         stores: { include: { navLinks: { select: { navNodeId: true } } } },
         assets: true,
+        outdoorFeatures: true,
         navNodes: { include: { edgesFrom: true } },
       },
     });
@@ -43,6 +44,7 @@ export class FloorsService {
         include: {
           stores: { include: { navLinks: { select: { navNodeId: true } } } },
           assets: true,
+          outdoorFeatures: true,
           navNodes: { include: { edgesFrom: true } },
         },
       });
@@ -136,9 +138,27 @@ export class FloorsService {
         });
       }
 
+      if (source.outdoorFeatures.length) {
+        await tx.outdoorFeature.createMany({
+          data: source.outdoorFeatures.map((feature) => ({
+            floorId: duplicate.id,
+            type: feature.type,
+            label: feature.label,
+            points: feature.points as any,
+            width: feature.width,
+            color: feature.color,
+            lineColor: feature.lineColor,
+            laneCount: feature.laneCount,
+            parkingAngle: feature.parkingAngle,
+            stallWidth: feature.stallWidth,
+            stallDepth: feature.stallDepth,
+          })),
+        });
+      }
+
       return tx.floor.findUnique({
         where: { id: duplicate.id },
-        include: { stores: true, assets: true, navNodes: { include: { edgesFrom: true } } },
+        include: { stores: true, assets: true, outdoorFeatures: true, navNodes: { include: { edgesFrom: true } } },
       });
     }, { timeout: 30_000 });
   }

@@ -8,7 +8,7 @@ import { ASSET_PRESETS } from "./asset-presets";
 import type { AssetPreset } from "./asset-presets";
 
 function AssetPresetGlyph({ preset }: { preset: AssetPreset }) {
-  if (preset.group === "furniture") {
+  if (preset.group === "furniture" || preset.group === "outdoor") {
     return (
       <svg viewBox="0 0 32 32" className="w-7 h-7" aria-hidden="true">
         <path d="M16 3 27 9.5v13L16 29 5 22.5v-13Z" fill={preset.color} opacity="0.18" />
@@ -42,6 +42,7 @@ const TOOLS: { id: DrawTool; label: string; icon: string; hint: string }[] = [
   { id: "polygon", label: "Free Draw",icon: "⬡", hint: "Click to add corners, double-click to close" },
   { id: "shape",   label: "Shape",    icon: "⬜", hint: "Pick a preset shape, then click the canvas to drop it" },
   { id: "asset",   label: "Asset",    icon: "3D", hint: "Pick a 3D asset, then click the canvas to place it" },
+  { id: "outdoor", label: "Outdoor",  icon: "▤", hint: "Draw roads, parking, sidewalks, crosswalks, and landscape" },
   { id: "node",    label: "Node",     icon: "●", hint: "Click to drop a nav node. Near an existing line, it snaps onto that line." },
   { id: "edge",    label: "Path",     icon: "—", hint: "Click to draw a connected path with straight, angle-snapped segments" },
   { id: "qr",      label: "QR",       icon: "▣", hint: "Click a nav node to create a QR scan point" },
@@ -55,7 +56,7 @@ interface Props {
 }
 
 export default function Toolbar({ onSave, isSaving, isDirty, buildingHref }: Props) {
-  const { tool, setTool, activePreset, setActivePreset, activeAssetPreset, setActiveAssetPreset } = useMapBuilderStore();
+  const { tool, setTool, activePreset, setActivePreset, activeAssetPreset, setActiveAssetPreset, activeOutdoorType, setActiveOutdoorType } = useMapBuilderStore();
   const [assetPickerOpen, setAssetPickerOpen] = useState(false);
   const current = TOOLS.find((t) => t.id === tool);
 
@@ -153,10 +154,10 @@ export default function Toolbar({ onSave, isSaving, isDirty, buildingHref }: Pro
           >
             &times;
           </button>
-          {(["symbol", "furniture"] as const).map((group) => (
+          {(["symbol", "furniture", "outdoor"] as const).map((group) => (
             <div key={group} className="flex flex-col lg:flex-row lg:items-start gap-2 lg:gap-3 py-1.5">
               <span className="lg:w-36 lg:pt-2 text-xs font-semibold uppercase text-slate-500 flex-shrink-0">
-                {group === "symbol" ? "Map Symbols" : "3D Objects & Furniture"}
+                {group === "symbol" ? "Map Symbols" : group === "outdoor" ? "Outdoor 3D Objects" : "3D Objects & Furniture"}
               </span>
               <div className="flex flex-wrap gap-2">
                 {ASSET_PRESETS.filter((preset) => preset.group === group).map((preset) => {
@@ -183,6 +184,27 @@ export default function Toolbar({ onSave, isSaving, isDirty, buildingHref }: Pro
               </div>
             </div>
           ))}
+        </div>
+      )}
+
+      {tool === "outdoor" && (
+        <div className="absolute top-full left-0 right-0 z-50 bg-white border-b border-slate-200 shadow-md px-3 py-3 flex items-center gap-2 overflow-x-auto">
+          <span className="text-xs font-semibold uppercase text-slate-500 mr-2">Surface:</span>
+          {([
+            ["road", "Road"], ["parking", "Parking"], ["sidewalk", "Sidewalk"],
+            ["crosswalk", "Crosswalk"], ["landscape", "Landscape"],
+          ] as const).map(([type, label]) => (
+            <button
+              key={type}
+              onClick={() => setActiveOutdoorType(type)}
+              className={`px-3 py-2 rounded border text-sm font-medium ${
+                activeOutdoorType === type ? "bg-emerald-600 border-emerald-600 text-white" : "bg-white border-slate-200 text-slate-700"
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+          <span className="ml-auto text-xs text-slate-500 whitespace-nowrap">Click points, then double-click to finish</span>
         </div>
       )}
     </div>

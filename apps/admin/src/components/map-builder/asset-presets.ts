@@ -1,6 +1,6 @@
 import type { AssetType } from "@wain/types";
 
-export type AssetPresetGroup = "symbol" | "furniture";
+export type AssetPresetGroup = "symbol" | "furniture" | "outdoor";
 
 export interface AssetPreset {
   id: string;
@@ -52,6 +52,16 @@ export const ASSET_PRESETS: AssetPreset[] = [
   { id: "lamp-square", type: "floor_lamp", label: "Floor Lamp - Square", group: "furniture", color: "#64748b", modelUrl: "/models/map-assets/floor-lamp-square.glb" },
   { id: "plant-tall", type: "potted_plant", label: "Potted Plant - Tall", group: "furniture", color: "#15803d", modelUrl: "/models/map-assets/potted-plant.glb" },
   { id: "plant-small", type: "potted_plant", label: "Potted Plant - Small", group: "furniture", color: "#15803d", modelUrl: "/models/map-assets/potted-plant-small.glb" },
+  { id: "outdoor-car", type: "car", label: "Car", group: "outdoor", color: "#475569", modelUrl: "/models/map-assets/car.glb" },
+  { id: "outdoor-streetlight", type: "streetlight", label: "Streetlight", group: "outdoor", color: "#475569", modelUrl: "/models/map-assets/streetlight.glb" },
+  { id: "outdoor-bollard", type: "bollard", label: "Bollard", group: "outdoor", color: "#64748b", modelUrl: "/models/map-assets/bollard.glb" },
+  { id: "outdoor-bus-shelter", type: "bus_shelter", label: "Bus Shelter", group: "outdoor", color: "#0284c7", modelUrl: "/models/map-assets/bus-shelter.glb" },
+  { id: "outdoor-bike-rack", type: "bike_rack", label: "Bike Rack", group: "outdoor", color: "#64748b", modelUrl: "/models/map-assets/bike-rack.glb" },
+  { id: "outdoor-gate", type: "gate", label: "Gate", group: "outdoor", color: "#475569", modelUrl: "/models/map-assets/gate.glb" },
+  { id: "outdoor-tree", type: "tree", label: "Outdoor Tree", group: "outdoor", color: "#16a34a", defaultScale: 1.5, modelUrl: "/models/map-assets/tree.glb" },
+  { id: "outdoor-bench", type: "bench", label: "Outdoor Bench", group: "outdoor", color: "#92400e", modelUrl: "/models/map-assets/bench.glb" },
+  { id: "outdoor-planter", type: "planter", label: "Outdoor Planter", group: "outdoor", color: "#15803d", modelUrl: "/models/map-assets/planter.glb" },
+  { id: "outdoor-bin", type: "trashcan", label: "Outdoor Bin", group: "outdoor", color: "#475569", modelUrl: "/models/map-assets/trashcan.glb" },
 ];
 
 export function findAssetPreset(id: string | null): AssetPreset | null {

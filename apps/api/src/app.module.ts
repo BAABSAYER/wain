@@ -6,6 +6,7 @@ import { BuildingsModule } from "./buildings/buildings.module";
 import { FloorsModule } from "./floors/floors.module";
 import { StoresModule } from "./stores/stores.module";
 import { AssetsModule } from "./assets/assets.module";
+import { OutdoorFeaturesModule } from "./outdoor-features/outdoor-features.module";
 import { NavModule } from "./nav/nav.module";
 import { RoutingModule } from "./routing/routing.module";
 import { QrModule } from "./qr/qr.module";
@@ -22,6 +23,7 @@ import { AuthGuard } from "./auth/auth.guard";
     FloorsModule,
     StoresModule,
     AssetsModule,
+    OutdoorFeaturesModule,
     NavModule,
     RoutingModule,
     QrModule,

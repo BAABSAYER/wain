@@ -76,11 +76,13 @@ export default function MapCanvas({
   const lastTouchDistanceRef = useRef(0);
 
   const {
-    tool, selectedId, selectedKind, extraSelectedIds, stores, assets, nodes, edges,
+    tool, selectedId, selectedKind, extraSelectedIds, stores, assets, outdoorFeatures, nodes, edges,
     activePolygon, activePreset, activeAssetPreset,
+    activeOutdoorType,
     addPolygonPoint, commitPolygon, clearActivePolygon,
     addNode, addEdge, addPresetStore, setActivePreset,
     addAsset, updateAsset, removeAsset,
+    addOutdoorFeature, updateOutdoorFeature, removeOutdoorFeature,
     setSelected, setTool, updateStore, updateNode,
     removeStore, removeNode, removeEdge,
     toggleExtraSelection, selectAllStores,
@@ -205,7 +207,7 @@ export default function MapCanvas({
 
     const raw = getStagePos();
     const pos = tool === "node" ? snapToNavLine(raw) : snapToGrid(raw);
-    if (tool === "polygon") { pushSnapshot(); addPolygonPoint(pos); return; }
+    if (tool === "polygon" || tool === "outdoor") { addPolygonPoint(pos); return; }
     if (tool === "node")    { pushSnapshot(); addNode({ id: nanoid(), x: pos.x, y: pos.y, type: "path" }); return; }
     if (tool === "edge") {
       const newId = nanoid();
@@ -270,9 +272,28 @@ export default function MapCanvas({
   }, [activePolygon, commitPolygon, pushSnapshot]);
 
   const handleStageDblClick = useCallback(() => {
-    if (isSpacePanning || tool !== "polygon") return;
-    closeActivePolygon();
-  }, [isSpacePanning, tool, closeActivePolygon]);
+    if (isSpacePanning) return;
+    if (tool === "polygon") closeActivePolygon();
+    if (tool === "outdoor") {
+      const polygonType = activeOutdoorType === "parking" || activeOutdoorType === "landscape";
+      if (activePolygon.length < (polygonType ? 3 : 2)) return;
+      pushSnapshot();
+      addOutdoorFeature({
+        id: nanoid(),
+        type: activeOutdoorType,
+        label: activeOutdoorType[0].toUpperCase() + activeOutdoorType.slice(1),
+        points: activePolygon,
+        width: activeOutdoorType === "road" ? 70 : activeOutdoorType === "sidewalk" ? 24 : 40,
+        color: activeOutdoorType === "landscape" ? "#b7d7a8" : activeOutdoorType === "parking" ? "#d9dde3" : "#d1d5db",
+        lineColor: "#ffffff",
+        laneCount: 2,
+        parkingAngle: 90,
+        stallWidth: 24,
+        stallDepth: 48,
+      });
+      clearActivePolygon();
+    }
+  }, [isSpacePanning, tool, closeActivePolygon, activeOutdoorType, activePolygon, pushSnapshot, addOutdoorFeature, clearActivePolygon]);
 
   const handleNodeClick = useCallback((nodeId: string, e: any) => {
     if (isSpacePanning) {
@@ -335,7 +356,7 @@ export default function MapCanvas({
 
   const handleMouseMove = useCallback(() => {
     if (isSpacePanning) return;
-    if (tool === "polygon") setMousePos(getStagePos());
+    if (tool === "polygon" || tool === "outdoor") setMousePos(getStagePos());
     if (tool === "edge" && edgeStart) setMousePos(snapEdgePoint(getStagePos(), edgeStart));
   }, [isSpacePanning, tool, edgeStart, getStagePos, snapEdgePoint]);
 
@@ -558,6 +579,10 @@ export default function MapCanvas({
           e.preventDefault();
           pushSnapshot();
           removeAsset(selectedId);
+        } else if (selectedKind === "outdoor" && selectedId) {
+          e.preventDefault();
+          pushSnapshot();
+          removeOutdoorFeature(selectedId);
         } else if (selectedKind === "edge" && selectedId) {
           e.preventDefault();
           pushSnapshot();
@@ -595,6 +620,13 @@ export default function MapCanvas({
             if (!e.repeat) pushSnapshot();
             updateAsset(selectedId, { x: asset.x + dx, y: asset.y + dy });
           }
+        } else if (selectedKind === "outdoor" && selectedId) {
+          const feature = outdoorFeatures.find((item) => item.id === selectedId);
+          if (feature) {
+            e.preventDefault();
+            if (!e.repeat) pushSnapshot();
+            updateOutdoorFeature(selectedId, { points: feature.points.map((p) => ({ x: p.x + dx, y: p.y + dy })) });
+          }
         }
       }
     };
@@ -602,10 +634,10 @@ export default function MapCanvas({
     return () => window.removeEventListener("keydown", handler);
   }, [
     clearActivePolygon, setSelected, setActivePreset,
-    selectedId, selectedKind, extraSelectedIds, stores, assets, nodes,
+    selectedId, selectedKind, extraSelectedIds, stores, assets, outdoorFeatures, nodes,
     addPresetStore, addNode, selectAllStores,
-    removeStore, removeAsset, removeNode, removeEdge,
-    updateStore, updateAsset, updateNode,
+    removeStore, removeAsset, removeOutdoorFeature, removeNode, removeEdge,
+    updateStore, updateAsset, updateOutdoorFeature, updateNode,
     pushSnapshot, undo, redo,
   ]);
 
@@ -765,6 +797,11 @@ export default function MapCanvas({
           {activePolygon.length} points — double-click to close polygon — ESC to cancel
         </div>
       )}
+      {tool === "outdoor" && (
+        <div className="absolute top-2 left-1/2 -translate-x-1/2 bg-emerald-600 text-white text-xs px-3 py-1 rounded-full z-10 shadow">
+          Drawing {activeOutdoorType}: click points, double-click to finish, ESC to cancel
+        </div>
+      )}
       {tool === "shape" && !activePreset && (
         <div className="absolute top-2 left-1/2 -translate-x-1/2 bg-slate-700 text-white text-xs px-3 py-1 rounded-full z-10 shadow">
           Pick a preset from the toolbar above
@@ -834,6 +871,92 @@ export default function MapCanvas({
           ))}
           {bgImage && (
             <KonvaImage image={bgImage} opacity={0.4} x={0} y={0} width={floorWidth} height={floorHeight} listening={false} />
+          )}
+        </Layer>
+
+        {/* Outdoor surfaces stay below rooms and navigation. */}
+        <Layer>
+          {outdoorFeatures.map((feature) => {
+            const selected = selectedKind === "outdoor" && selectedId === feature.id;
+            const closed = feature.type === "parking" || feature.type === "landscape";
+            return (
+              <Group
+                key={feature.id}
+                draggable={tool === "select" && selected && !isSpacePanning}
+                onDragStart={() => pushSnapshot()}
+                onDragEnd={(e: any) => {
+                  const dx = e.target.x();
+                  const dy = e.target.y();
+                  e.target.position({ x: 0, y: 0 });
+                  updateOutdoorFeature(feature.id, {
+                    points: feature.points.map((point) => ({ x: point.x + dx, y: point.y + dy })),
+                  });
+                }}
+              >
+                <Line
+                  points={feature.points.flatMap((point) => [point.x, point.y])}
+                  closed={closed}
+                  fill={closed ? `${feature.color ?? "#d9dde3"}dd` : undefined}
+                  stroke={selected ? "#059669" : feature.color ?? "#d1d5db"}
+                  strokeWidth={closed ? (selected ? 5 : 2) : feature.width}
+                  lineCap="round"
+                  lineJoin="round"
+                  opacity={0.9}
+                  onClick={(e: any) => {
+                    if (tool !== "select" || isSpacePanning) return;
+                    e.cancelBubble = true;
+                    setSelected(feature.id, "outdoor");
+                  }}
+                  onTap={(e: any) => {
+                    if (tool !== "select" || isSpacePanning) return;
+                    e.cancelBubble = true;
+                    setSelected(feature.id, "outdoor");
+                  }}
+                />
+                <Text
+                  x={feature.points[0]?.x ?? 0}
+                  y={feature.points[0]?.y ?? 0}
+                  text={feature.label || feature.type}
+                  fontSize={14}
+                  fill="#334155"
+                  listening={false}
+                />
+                {selected && feature.points.map((point, index) => (
+                  <Circle
+                    key={`${feature.id}-point-${index}`}
+                    x={point.x}
+                    y={point.y}
+                    radius={7}
+                    fill="#ffffff"
+                    stroke="#059669"
+                    strokeWidth={3}
+                    draggable
+                    onDragStart={(e: any) => {
+                      e.cancelBubble = true;
+                      pushSnapshot();
+                    }}
+                    onDragMove={(e: any) => {
+                      e.cancelBubble = true;
+                      const points = feature.points.map((item, pointIndex) =>
+                        pointIndex === index ? snapToGrid({ x: e.target.x(), y: e.target.y() }) : item,
+                      );
+                      updateOutdoorFeature(feature.id, { points });
+                    }}
+                  />
+                ))}
+              </Group>
+            );
+          })}
+          {tool === "outdoor" && activePolygon.length > 0 && (
+            <Line
+              points={[...activePolygon.flatMap((point) => [point.x, point.y]), mousePos.x, mousePos.y]}
+              closed={(activeOutdoorType === "parking" || activeOutdoorType === "landscape") && activePolygon.length >= 3}
+              fill={activeOutdoorType === "landscape" ? "#b7d7a866" : activeOutdoorType === "parking" ? "#d9dde366" : undefined}
+              stroke="#059669"
+              strokeWidth={3}
+              dash={[12, 8]}
+              listening={false}
+            />
           )}
         </Layer>
 

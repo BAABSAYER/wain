@@ -85,6 +85,8 @@ export const api = {
   updateAsset: (id: string, data: any)    => req<any>(`/assets/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
   bulkSaveAssets: (floorId: string, assets: any[]) =>
                                               req<any[]>(`/assets/floor/${floorId}/bulk`, { method: "PUT", body: JSON.stringify({ assets }) }),
+  bulkSaveOutdoorFeatures: (floorId: string, features: any[]) =>
+                                              req<any[]>(`/outdoor-features/floor/${floorId}/bulk`, { method: "PUT", body: JSON.stringify({ features }) }),
   deleteAsset: (id: string)               => req<any>(`/assets/${id}`, { method: "DELETE" }),
 
   // Nav graph

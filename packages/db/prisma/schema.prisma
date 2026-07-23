@@ -41,6 +41,7 @@ model Floor {
   building  Building  @relation(fields: [buildingId], references: [id], onDelete: Cascade)
   stores    Store[]
   assets    Asset[]
+  outdoorFeatures OutdoorFeature[]
   navNodes  NavNode[]
 
   @@unique([buildingId, level])
@@ -129,6 +130,28 @@ model Asset {
 
   floor   Floor    @relation(fields: [floorId], references: [id], onDelete: Cascade)
   navNode NavNode? @relation(fields: [navNodeId], references: [id], onDelete: SetNull)
+
+  @@index([floorId])
+  @@index([type])
+}
+
+model OutdoorFeature {
+  id           String   @id @default(cuid())
+  floorId      String
+  type         String
+  label        String   @default("")
+  points       Json
+  width        Float    @default(40)
+  color        String?
+  lineColor    String?
+  laneCount    Int      @default(2)
+  parkingAngle Float    @default(90)
+  stallWidth   Float    @default(24)
+  stallDepth   Float    @default(48)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  floor Floor @relation(fields: [floorId], references: [id], onDelete: Cascade)
 
   @@index([floorId])
   @@index([type])

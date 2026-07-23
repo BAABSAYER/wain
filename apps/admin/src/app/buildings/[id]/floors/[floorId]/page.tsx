@@ -34,7 +34,7 @@ export default function FloorEditorPage() {
   const [qrError, setQrError] = useState<string | null>(null);
 
   const {
-    isDirty, markClean, loadFromApi, stores, assets, nodes, edges, setTool,
+    isDirty, markClean, loadFromApi, stores, assets, outdoorFeatures, nodes, edges, setTool,
     selectedId, selectedKind, extraSelectedIds, setSelected,
     toggleExtraSelection, selectAllStores,
   } = useMapBuilderStore();
@@ -116,7 +116,20 @@ export default function FloorEditorPage() {
       modelUrl: a.modelUrl ?? null,
       navNodeId: a.navNodeId ?? null,
     }));
-    loadFromApi(canvasStores, canvasNodes, canvasEdges, canvasAssets);
+    const canvasOutdoorFeatures = (f.outdoorFeatures ?? []).map((feature: any) => ({
+      id: feature.id,
+      type: feature.type,
+      label: feature.label ?? "",
+      points: feature.points ?? [],
+      width: feature.width ?? 40,
+      color: feature.color ?? null,
+      lineColor: feature.lineColor ?? null,
+      laneCount: feature.laneCount ?? 2,
+      parkingAngle: feature.parkingAngle ?? 90,
+      stallWidth: feature.stallWidth ?? 24,
+      stallDepth: feature.stallDepth ?? 48,
+    }));
+    loadFromApi(canvasStores, canvasNodes, canvasEdges, canvasAssets, canvasOutdoorFeatures);
   }, [buildingId, floorId, loadFromApi]);
 
   // Load floor + QR codes
@@ -187,6 +200,7 @@ export default function FloorEditorPage() {
         modelUrl: asset.modelUrl ?? null,
         navNodeId: mapId(asset.navNodeId),
       })));
+      await api.bulkSaveOutdoorFeatures(floorId, outdoorFeatures);
       markClean();
 
       // 4. Pull the saved state back so local store / node ids are the real
@@ -199,7 +213,7 @@ export default function FloorEditorPage() {
     } finally {
       setIsSaving(false);
     }
-  }, [stores, assets, nodes, edges, floor, floorId, markClean, reloadFloor]);
+  }, [stores, assets, outdoorFeatures, nodes, edges, floor, floorId, markClean, reloadFloor]);
 
   // Triggered when user uses the QR tool and clicks a nav node on the canvas
   const handleCreateQRFromNode = useCallback((nodeId: string) => {
