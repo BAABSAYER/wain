@@ -517,6 +517,7 @@ const BuildingMap = forwardRef<BuildingMapHandle, Props>(function BuildingMap(
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const youMarkerRef = useRef<maplibregl.Marker | null>(null);
+  const youLabelMarkerRef = useRef<maplibregl.Marker | null>(null);
   const labelMarkersRef = useRef<maplibregl.Marker[]>([]);
   const assetsRef = useRef<AssetData[]>(assets);
   const toLngLatRef = useRef<(x: number, y: number) => [number, number]>(() => [0, 0]);
@@ -1167,6 +1168,8 @@ const BuildingMap = forwardRef<BuildingMapHandle, Props>(function BuildingMap(
     if (!map || !readyRef.current) return;
     youMarkerRef.current?.remove();
     youMarkerRef.current = null;
+    youLabelMarkerRef.current?.remove();
+    youLabelMarkerRef.current = null;
     if (!origin) return;
 
     const el = document.createElement("div");
@@ -1176,17 +1179,35 @@ const BuildingMap = forwardRef<BuildingMapHandle, Props>(function BuildingMap(
     el.style.zIndex = "50";
     el.style.pointerEvents = "none";
     el.dataset.kind = "current-location";
-    const currentLocationLabel = locale === "ar" ? "أنت هنا" : "You are here";
     el.innerHTML = `
       <div style="position:absolute;inset:0;border-radius:9999px;background:rgba(56,189,248,0.35);animation:wainpulse 1.6s ease-out infinite"></div>
       <div style="position:absolute;inset:6px;border-radius:9999px;background:#0ea5e9;border:4px solid #fff;box-shadow:0 2px 7px rgba(15,23,42,0.45)"></div>
       ${heading !== null ? `<div style="position:absolute;left:50%;top:50%;width:0;height:0;border-left:8px solid transparent;border-right:8px solid transparent;border-bottom:16px solid #0284c7;transform:translate(-50%,-27px) rotate(${(heading * 180) / Math.PI}deg);transform-origin:50% 27px;filter:drop-shadow(0 1px 1px rgba(255,255,255,0.9))"></div>` : ""}
-      <div style="position:absolute;left:50%;top:38px;transform:translateX(-50%);white-space:nowrap;border-radius:9999px;background:#0369a1;color:#fff;border:2px solid #fff;padding:3px 8px;font-size:11px;font-weight:700;line-height:1;box-shadow:0 2px 7px rgba(15,23,42,0.35)">${currentLocationLabel}</div>
     `;
-    const marker = new maplibregl.Marker({ element: el })
-      .setLngLat(toLngLat(origin.x, origin.y))
-      .addTo(map);
+    const location = toLngLat(origin.x, origin.y);
+    const marker = new maplibregl.Marker({
+      element: el,
+      anchor: "center",
+      pitchAlignment: "map",
+      rotationAlignment: "viewport",
+      subpixelPositioning: true,
+    }).setLngLat(location).addTo(map);
+
+    const labelEl = document.createElement("div");
+    labelEl.dataset.kind = "current-location-label";
+    labelEl.style.cssText = "pointer-events:none;white-space:nowrap;border-radius:9999px;background:#0369a1;color:#fff;border:2px solid #fff;padding:3px 8px;font-size:11px;font-weight:700;line-height:1;box-shadow:0 2px 7px rgba(15,23,42,0.35)";
+    labelEl.textContent = locale === "ar" ? "أنت هنا" : "You are here";
+    const labelMarker = new maplibregl.Marker({
+      element: labelEl,
+      anchor: "top",
+      offset: [0, 21],
+      pitchAlignment: "viewport",
+      rotationAlignment: "viewport",
+      subpixelPositioning: true,
+    }).setLngLat(location).addTo(map);
+
     youMarkerRef.current = marker;
+    youLabelMarkerRef.current = labelMarker;
   }, [origin, heading, toLngLat, ready, locale]);
 
   // Bounds covering the whole route (origin → destination), for auto-framing.

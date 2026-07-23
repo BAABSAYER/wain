@@ -399,7 +399,7 @@ export default function NavPage() {
 
       {/* Floor switcher stays separate from the side-mounted map controls. */}
       {building.floors.length > 1 && (
-        <div className="absolute top-44 left-1/2 z-30 flex max-w-[calc(100%-1.5rem)] -translate-x-1/2 items-stretch bg-white border border-slate-200 rounded-2xl shadow-md overflow-x-auto">
+        <div className="absolute top-44 left-3 rtl:left-auto rtl:right-3 z-30 flex max-w-[calc(100%-1.5rem)] items-stretch bg-white border border-slate-200 rounded-2xl shadow-md overflow-x-auto">
           <span className="h-11 px-3 flex items-center justify-center text-[10px] font-semibold uppercase text-slate-500 border-r rtl:border-r-0 rtl:border-l border-slate-200 whitespace-nowrap">
             {t("floor")}
           </span>
