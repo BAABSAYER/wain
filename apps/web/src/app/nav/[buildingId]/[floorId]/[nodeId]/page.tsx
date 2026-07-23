@@ -338,7 +338,10 @@ export default function NavPage() {
     );
   }
 
-  const hasRoute = !!route && !!destinationName;
+  // A successful route is the source of truth. Some imported rooms only have
+  // an Arabic name, so gating navigation on the optional English name hides
+  // the route and its cross-floor handoff even though routing succeeded.
+  const hasRoute = !!route;
 
   return (
     <div className="h-dvh flex flex-col overflow-hidden relative bg-slate-50">
@@ -347,7 +350,7 @@ export default function NavPage() {
         {hasRoute ? (
           <DirectionsCard
             originName={originLabel}
-            destinationName={destinationName!}
+            destinationName={destinationName ?? route?.destination.name ?? ""}
             destinationNameAr={destinationNameAr ?? undefined}
             estimatedMinutes={route?.estimatedMinutes ?? null}
             totalSteps={route?.steps.length ?? null}

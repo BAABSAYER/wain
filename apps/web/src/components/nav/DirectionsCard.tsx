@@ -19,8 +19,11 @@ export default function DirectionsCard({
 }: Props) {
   const { t, locale } = useLocale();
   const ar = locale === "ar";
-  const primary = ar && destinationNameAr ? destinationNameAr : destinationName;
-  const secondary = ar ? destinationName : destinationNameAr;
+  const primary = ar
+    ? destinationNameAr || destinationName
+    : destinationName || destinationNameAr || "";
+  const alternate = ar ? destinationName : destinationNameAr;
+  const secondary = alternate && alternate !== primary ? alternate : "";
 
   return (
     <div
