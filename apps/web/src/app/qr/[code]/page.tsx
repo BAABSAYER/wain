@@ -19,6 +19,7 @@ interface QrRecord {
   nodeId: string | null;
   code: string;
   label: string;
+  node?: { floorId: string } | null;
 }
 
 async function resolveQr(code: string): Promise<QrRecord | null> {
@@ -84,5 +85,6 @@ export default async function QrCodePage({
   }
 
   // Happy path: hand off to the visitor nav page.
-  redirect(`/nav/${qr.buildingId}/${qr.floorId}/${qr.nodeId}`);
+  const nodeFloorId = qr.node?.floorId ?? qr.floorId;
+  redirect(`/nav/${qr.buildingId}/${nodeFloorId}/${qr.nodeId}`);
 }

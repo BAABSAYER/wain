@@ -83,16 +83,18 @@ export default function NavPage() {
   const [activeTab, setActiveTab] = useState<"map" | "list" | "help">("map");
   const [projection, setProjection] = useState<SceneProjectionInfo>({ azimuth: 0, destScreen: null });
   const [graph, setGraph] = useState<any[]>([]);
-  const [accessible, setAccessible] = useState(false);
-  const [lastDest, setLastDest] = useState<{ id: string; name: string; nameAr: string } | null>(null);
 
   useEffect(() => {
     api.getBuilding(buildingId)
       .then((b: BuildingData) => {
         setBuilding(b);
-        const floor = b.floors.find((f) => f.id === floorId) ?? b.floors[0];
+        // The linked node is the source of truth. A QR may still carry an old
+        // floorId after reassignment, which used to open the wrong floor and
+        // hide the "You are here" marker entirely.
+        const scanFloor = b.floors.find((f) => f.navNodes.some((node) => node.id === nodeId));
+        const floor = scanFloor ?? b.floors.find((f) => f.id === floorId) ?? b.floors[0];
         setCurrentFloor(floor ?? null);
-        api.track({ buildingId, floorId, qrCode: nodeId, eventType: "qr_scan" }).catch(() => {});
+        api.track({ buildingId, floorId: floor?.id ?? floorId, qrCode: nodeId, eventType: "qr_scan" }).catch(() => {});
       })
       .catch(() => setError("Building not found. Please scan the QR code again."))
       .finally(() => setLoading(false));
@@ -127,6 +129,17 @@ export default function NavPage() {
     }
     return null;
   }, [currentPosition, currentFloor]);
+
+  const showCurrentLocation = useCallback(() => {
+    const scanFloor = building?.floors.find((floor) => floor.id === originNode?.floorId);
+    if (scanFloor && scanFloor.id !== currentFloor?.id) {
+      setCurrentFloor(scanFloor);
+      // Let the map receive the scan floor and marker coordinates first.
+      window.setTimeout(() => sceneRef.current?.recenter(), 0);
+      return;
+    }
+    sceneRef.current?.recenter();
+  }, [building, originNode, currentFloor]);
 
   // One-shot azimuth: orient the camera so the route reads "up" when a destination is picked.
   const initialAzimuth = useMemo<number | null>(() => {
@@ -187,11 +200,10 @@ export default function NavPage() {
   const allStores = currentFloor?.stores ?? [];
   const highlightCategory = filter === "all" ? null : filter;
 
-  const computeRoute = useCallback(async (storeId: string, name: string, nameAr: string, useAccessible = accessible) => {
+  const computeRoute = useCallback(async (storeId: string, name: string, nameAr: string) => {
     setRouteError(null);
     setDestinationName(name);
     setDestinationNameAr(nameAr);
-    setLastDest({ id: storeId, name, nameAr });
 
     // A destination preview may have switched floors. Navigation must always
     // begin where the QR code was scanned and advance floors via the handoff.
@@ -199,7 +211,7 @@ export default function NavPage() {
     if (startingFloor) setCurrentFloor(startingFloor);
 
     try {
-      const result = await api.getRoute(nodeId, storeId, useAccessible);
+      const result = await api.getRoute(nodeId, storeId, false);
       setRoute(result);
       api.track({ buildingId, floorId, eventType: "route_requested", destinationId: storeId }).catch(() => {});
     } catch (err: any) {
@@ -207,16 +219,7 @@ export default function NavPage() {
       setDestinationName(null);
       setDestinationNameAr(null);
     }
-  }, [nodeId, buildingId, floorId, accessible, building, originNode]);
-
-  // Toggle accessible routing; recompute the active route if one is shown.
-  const toggleAccessible = useCallback(() => {
-    setAccessible((prev) => {
-      const next = !prev;
-      if (lastDest) computeRoute(lastDest.id, lastDest.name, lastDest.nameAr, next);
-      return next;
-    });
-  }, [lastDest, computeRoute]);
+  }, [nodeId, buildingId, floorId, building, originNode]);
 
   const handleSearchSelect = (id: string, name: string, nameAr: string) => {
     const store = currentFloor?.stores.find((s) => s.id === id);
@@ -294,7 +297,6 @@ export default function NavPage() {
     setRoute(null);
     setDestinationName(null);
     setDestinationNameAr(null);
-    setLastDest(null);
   };
 
   if (loading) {
@@ -395,9 +397,12 @@ export default function NavPage() {
         </div>
       )}
 
-      {/* ─── Floor switcher (top-right corner, below the cards) ─── */}
+      {/* Floor switcher stays separate from the side-mounted map controls. */}
       {building.floors.length > 1 && (
-        <div className="absolute top-44 right-3 rtl:right-auto rtl:left-3 z-10 flex flex-col bg-white border border-slate-200 rounded-2xl shadow-md overflow-hidden">
+        <div className="absolute top-44 left-1/2 z-30 flex max-w-[calc(100%-1.5rem)] -translate-x-1/2 items-stretch bg-white border border-slate-200 rounded-2xl shadow-md overflow-x-auto">
+          <span className="h-11 px-3 flex items-center justify-center text-[10px] font-semibold uppercase text-slate-500 border-r rtl:border-r-0 rtl:border-l border-slate-200 whitespace-nowrap">
+            {t("floor")}
+          </span>
           {building.floors
             .slice()
             .sort((a, b) => b.level - a.level)
@@ -452,19 +457,7 @@ export default function NavPage() {
           <Compass azimuth={projection.azimuth} northOffset={building.northOffset ?? 0} />
           <MapLegend onFindNearest={findNearestAmenity} />
           <button
-            onClick={toggleAccessible}
-            aria-label={locale === "ar" ? "مسار يناسب الكراسي المتحركة" : "Accessible route"}
-            title={locale === "ar" ? "مسار يناسب الكراسي المتحركة" : "Accessible (step-free) route"}
-            className={`w-12 h-12 rounded-full shadow-md border flex items-center justify-center text-xl transition-colors ${
-              accessible
-                ? "bg-blue-500 border-blue-500 text-white"
-                : "bg-white border-slate-200 hover:bg-slate-50 text-slate-700"
-            }`}
-          >
-            ♿
-          </button>
-          <button
-            onClick={() => sceneRef.current?.recenter()}
+            onClick={showCurrentLocation}
             aria-label={t("youAreHere")}
             className="w-12 h-12 bg-white border border-slate-200 rounded-full shadow-md hover:bg-slate-50 active:bg-slate-100 flex items-center justify-center text-xl text-slate-700"
           >

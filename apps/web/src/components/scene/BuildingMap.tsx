@@ -1031,6 +1031,7 @@ const BuildingMap = forwardRef<BuildingMapHandle, Props>(function BuildingMap(
     const addMarker = (lngLat: [number, number], el: HTMLElement) => {
       labelMarkersRef.current.push(new maplibregl.Marker({ element: el }).setLngLat(lngLat).addTo(map));
     };
+    const roomLabelEntries: Array<{ el: HTMLElement; width: number; height: number }> = [];
 
     // 1) ZONE PILLS — one big colored pill at the centroid of each zone group
     const zoneGroups = new Map<string, { en: string; ar: string; color: string; xs: number[]; ys: number[] }>();
@@ -1107,8 +1108,15 @@ const BuildingMap = forwardRef<BuildingMapHandle, Props>(function BuildingMap(
       // Plain room label
       const el = document.createElement("div");
       el.dataset.kind = "room";
-      el.style.cssText = "pointer-events:none;transform:translate(-50%,-50%);white-space:nowrap;font-weight:700;font-size:12px;color:#0f172a;text-shadow:0 1px 0 #fff,0 0 4px rgba(255,255,255,0.9);text-align:center";
+      el.style.cssText = "pointer-events:none;transform:translate(-50%,-50%);font-weight:700;font-size:11px;line-height:1.1;color:#0f172a;text-shadow:0 1px 0 #fff,0 0 4px rgba(255,255,255,0.9);text-align:center;white-space:normal;overflow-wrap:anywhere";
       el.textContent = name;
+      const roomXs = s.polygon.map((point) => point.x);
+      const roomYs = s.polygon.map((point) => point.y);
+      roomLabelEntries.push({
+        el,
+        width: Math.max(...roomXs) - Math.min(...roomXs),
+        height: Math.max(...roomYs) - Math.min(...roomYs),
+      });
       addMarker(ll, el);
     }
 
@@ -1119,6 +1127,24 @@ const BuildingMap = forwardRef<BuildingMapHandle, Props>(function BuildingMap(
       const z = map.getZoom();
       const showRooms = z >= fz + 0.8;   // default close view is fz+1.7 → rooms visible
       const showZones = z < fz + 1.3;    // zoomed out → zone pills carry the map
+      // Keep each plain label proportional to its room's current on-screen
+      // footprint. Large rooms receive a larger label; small rooms stop at an
+      // 11px readability floor instead of becoming illegible.
+      const projectedOrigin = map.project(toLngLat(0, 0));
+      const projectedXUnit = map.project(toLngLat(1, 0));
+      const projectedYUnit = map.project(toLngLat(0, 1));
+      const pixelsPerXUnit = Math.hypot(projectedXUnit.x - projectedOrigin.x, projectedXUnit.y - projectedOrigin.y);
+      const pixelsPerYUnit = Math.hypot(projectedYUnit.x - projectedOrigin.x, projectedYUnit.y - projectedOrigin.y);
+      for (const { el, width, height } of roomLabelEntries) {
+        const projectedWidth = width * pixelsPerXUnit;
+        const projectedHeight = height * pixelsPerYUnit;
+        const footprint = Math.sqrt(Math.max(1, projectedWidth * projectedHeight));
+        const fontSize = Math.min(22, Math.max(11, footprint * 0.14));
+        const labelWidth = Math.min(240, Math.max(72, projectedWidth * 0.82));
+        el.style.fontSize = `${fontSize.toFixed(1)}px`;
+        el.style.width = `${labelWidth.toFixed(0)}px`;
+      }
+
       for (const m of labelMarkersRef.current) {
         const el = m.getElement();
         const kind = el.dataset.kind;
@@ -1144,19 +1170,24 @@ const BuildingMap = forwardRef<BuildingMapHandle, Props>(function BuildingMap(
     if (!origin) return;
 
     const el = document.createElement("div");
-    el.style.width = "26px";
-    el.style.height = "26px";
+    el.style.width = "34px";
+    el.style.height = "34px";
     el.style.position = "relative";
+    el.style.zIndex = "50";
+    el.style.pointerEvents = "none";
+    el.dataset.kind = "current-location";
+    const currentLocationLabel = locale === "ar" ? "أنت هنا" : "You are here";
     el.innerHTML = `
       <div style="position:absolute;inset:0;border-radius:9999px;background:rgba(56,189,248,0.35);animation:wainpulse 1.6s ease-out infinite"></div>
-      <div style="position:absolute;inset:5px;border-radius:9999px;background:#0ea5e9;border:3px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,0.3)"></div>
-      ${heading !== null ? `<div style="position:absolute;left:50%;top:50%;width:0;height:0;border-left:7px solid transparent;border-right:7px solid transparent;border-bottom:14px solid #0ea5e9;transform:translate(-50%,-22px) rotate(${(heading * 180) / Math.PI}deg);transform-origin:50% 22px"></div>` : ""}
+      <div style="position:absolute;inset:6px;border-radius:9999px;background:#0ea5e9;border:4px solid #fff;box-shadow:0 2px 7px rgba(15,23,42,0.45)"></div>
+      ${heading !== null ? `<div style="position:absolute;left:50%;top:50%;width:0;height:0;border-left:8px solid transparent;border-right:8px solid transparent;border-bottom:16px solid #0284c7;transform:translate(-50%,-27px) rotate(${(heading * 180) / Math.PI}deg);transform-origin:50% 27px;filter:drop-shadow(0 1px 1px rgba(255,255,255,0.9))"></div>` : ""}
+      <div style="position:absolute;left:50%;top:38px;transform:translateX(-50%);white-space:nowrap;border-radius:9999px;background:#0369a1;color:#fff;border:2px solid #fff;padding:3px 8px;font-size:11px;font-weight:700;line-height:1;box-shadow:0 2px 7px rgba(15,23,42,0.35)">${currentLocationLabel}</div>
     `;
     const marker = new maplibregl.Marker({ element: el })
       .setLngLat(toLngLat(origin.x, origin.y))
       .addTo(map);
     youMarkerRef.current = marker;
-  }, [origin, heading, toLngLat, ready]);
+  }, [origin, heading, toLngLat, ready, locale]);
 
   // Bounds covering the whole route (origin → destination), for auto-framing.
   const routeBounds = useMemo(() => {
