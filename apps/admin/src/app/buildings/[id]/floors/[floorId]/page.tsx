@@ -3,6 +3,8 @@ import { useEffect, useState, useCallback } from "react";
 import { useParams } from "next/navigation";
 import dynamic from "next/dynamic";
 import Link from "next/link";
+import { Eye, EyeOff, MapPinned } from "lucide-react";
+import type { FloorGeoreference } from "@wain/types";
 import { api } from "@/lib/api";
 import { useMapBuilderStore } from "@/store/map-builder";
 import { usePublicAppUrl } from "@/lib/public-url";
@@ -10,8 +12,10 @@ import PublicUrlSetting from "@/components/PublicUrlSetting";
 import PropertiesPanel from "@/components/map-builder/PropertiesPanel";
 import Toolbar from "@/components/map-builder/Toolbar";
 import CadImportModal from "@/components/map-builder/cad-import/CadImportModal";
+import { getFloorGeoreference } from "@/components/map-builder/geo-reference";
 
 const MapCanvas = dynamic(() => import("@/components/map-builder/MapCanvas"), { ssr: false });
+const GeoReferenceModal = dynamic(() => import("@/components/map-builder/GeoReferenceModal"), { ssr: false });
 
 interface QRCode {
   id: string; code: string; label: string;
@@ -28,6 +32,8 @@ export default function FloorEditorPage() {
   const [canvasHost, setCanvasHost] = useState<HTMLDivElement | null>(null);
   const [mobilePanel, setMobilePanel] = useState<"floor" | "properties" | null>(null);
   const [cadImportOpen, setCadImportOpen] = useState(false);
+  const [geoReferenceOpen, setGeoReferenceOpen] = useState(false);
+  const [showGeoBasemap, setShowGeoBasemap] = useState(true);
 
   // Modal: QR generation prompt when user clicks a node with the QR tool
   const [qrPrompt, setQrPrompt] = useState<{ nodeId: string; label: string } | null>(null);
@@ -39,6 +45,7 @@ export default function FloorEditorPage() {
     toggleExtraSelection, selectAllStores,
   } = useMapBuilderStore();
   const { url: publicAppUrl } = usePublicAppUrl();
+  const geoReference = getFloorGeoreference(floor);
 
   const selectedRoomIds = selectedKind === "store" && selectedId
     ? new Set([selectedId, ...extraSelectedIds])
@@ -81,6 +88,7 @@ export default function FloorEditorPage() {
     ]);
     setBuilding(b);
     setFloor(f);
+    if (getFloorGeoreference(f)) setShowGeoBasemap(true);
     const canvasStores = (f.stores ?? []).map((s: any) => ({
       id: s.id, polygon: s.polygon, name: s.name, nameAr: s.nameAr,
       category: s.category, color: s.color, extrudeHeight: s.extrudeHeight,
@@ -250,6 +258,30 @@ export default function FloorEditorPage() {
     await refreshQR();
   };
 
+  const saveGeoReference = async (reference: FloorGeoreference) => {
+    const updated = await api.updateFloor(floorId, {
+      geoLatitude: reference.latitude,
+      geoLongitude: reference.longitude,
+      geoBearing: reference.bearing,
+      geoMetersPerUnit: reference.metersPerUnit,
+      geoBasemap: reference.basemap,
+    });
+    setFloor((current: any) => ({ ...current, ...updated }));
+    setShowGeoBasemap(true);
+  };
+
+  const removeGeoReference = async () => {
+    const updated = await api.updateFloor(floorId, {
+      geoLatitude: null,
+      geoLongitude: null,
+      geoMetersPerUnit: null,
+      geoBearing: 0,
+    });
+    setFloor((current: any) => ({ ...current, ...updated }));
+    setShowGeoBasemap(false);
+    setGeoReferenceOpen(false);
+  };
+
   if (!floor) return <div className="p-8 text-slate-400 min-h-screen">Loading floor…</div>;
 
   return (
@@ -270,6 +302,38 @@ export default function FloorEditorPage() {
             <div className="font-semibold mt-2 text-sm text-slate-900">{floor.name}</div>
             <div className="text-xs text-slate-500" dir="rtl">{floor.nameAr}</div>
             <div className="text-[11px] text-slate-400 mt-1">{floor.width} × {floor.height}</div>
+
+            <div className="mt-3 border-t border-slate-100 pt-3">
+              <div className="flex items-center justify-between gap-2">
+                <div>
+                  <div className="text-[11px] font-semibold text-slate-700">Real-world map</div>
+                  <div className="text-[10px] text-slate-400">
+                    {geoReference
+                      ? `${geoReference.latitude.toFixed(5)}, ${geoReference.longitude.toFixed(5)}`
+                      : "Not aligned"}
+                  </div>
+                </div>
+                {geoReference && (
+                  <button
+                    type="button"
+                    onClick={() => setShowGeoBasemap((visible) => !visible)}
+                    className="flex h-8 w-8 items-center justify-center text-slate-500 hover:bg-slate-100"
+                    aria-label={showGeoBasemap ? "Hide real-world map" : "Show real-world map"}
+                    title={showGeoBasemap ? "Hide real-world map" : "Show real-world map"}
+                  >
+                    {showGeoBasemap ? <Eye size={16} /> : <EyeOff size={16} />}
+                  </button>
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={() => setGeoReferenceOpen(true)}
+                className="mt-2 flex h-9 w-full items-center justify-center gap-2 border border-blue-200 bg-blue-50 text-xs font-semibold text-blue-700 hover:bg-blue-100"
+              >
+                <MapPinned size={16} />
+                {geoReference ? "Adjust map alignment" : "Locate on real map"}
+              </button>
+            </div>
 
             {/* Bulk CAD/BIM import */}
             <div className="mt-3">
@@ -458,6 +522,8 @@ export default function FloorEditorPage() {
             floorHeight={floor.height}
             canvasWidth={dimensions.w}
             canvasHeight={dimensions.h}
+            showGeoBasemap={!!geoReference && showGeoBasemap}
+            geoReference={geoReference}
             onCreateQR={handleCreateQRFromNode}
           />
 
@@ -517,6 +583,15 @@ export default function FloorEditorPage() {
           floorWidth={floor.width}
           floorHeight={floor.height}
           onClose={() => setCadImportOpen(false)}
+        />
+      )}
+
+      {geoReferenceOpen && (
+        <GeoReferenceModal
+          floor={floor}
+          onClose={() => setGeoReferenceOpen(false)}
+          onSave={saveGeoReference}
+          onRemove={removeGeoReference}
         />
       )}
     </div>

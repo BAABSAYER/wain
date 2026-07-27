@@ -31,6 +31,8 @@ import { findPreset } from "./shape-presets";
 import { findAssetPreset } from "./asset-presets";
 import { nanoid } from "./nanoid";
 import { copyToClipboard, pasteFromClipboard } from "./clipboard";
+import GeoBasemap from "./GeoBasemap";
+import type { FloorGeoreference } from "@wain/types";
 
 interface Props {
   floorPlanUrl?: string;
@@ -38,6 +40,9 @@ interface Props {
   floorHeight: number;
   canvasWidth: number;
   canvasHeight: number;
+  showGeoBasemap?: boolean;
+  geoReference?: FloorGeoreference | null;
+  onViewportChange?: (viewport: { x: number; y: number; scale: number }) => void;
   onCreateQR?: (nodeId: string) => void;
 }
 
@@ -57,7 +62,8 @@ const EDGE_ANGLE_STEP = Math.PI / 4;
 type Point = { x: number; y: number };
 
 export default function MapCanvas({
-  floorPlanUrl, floorWidth, floorHeight, canvasWidth, canvasHeight, onCreateQR,
+  floorPlanUrl, floorWidth, floorHeight, canvasWidth, canvasHeight,
+  showGeoBasemap = false, geoReference = null, onViewportChange, onCreateQR,
 }: Props) {
   const [bgImage] = useImage(floorPlanUrl ?? "");
   const stageRef = useRef<any>(null);
@@ -72,8 +78,17 @@ export default function MapCanvas({
   const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
   const [isSpacePanning, setIsSpacePanning] = useState(false);
   const [isStageDragging, setIsStageDragging] = useState(false);
+  const [geoViewport, setGeoViewport] = useState<{ x: number; y: number; scale: number } | null>(null);
   const lastTouchCenterRef = useRef<Point | null>(null);
   const lastTouchDistanceRef = useRef(0);
+
+  const emitViewport = useCallback(() => {
+    const stage = stageRef.current;
+    if (!stage) return;
+    const viewport = { x: stage.x(), y: stage.y(), scale: stage.scaleX() };
+    setGeoViewport(viewport);
+    onViewportChange?.(viewport);
+  }, [onViewportChange]);
 
   const {
     tool, selectedId, selectedKind, extraSelectedIds, stores, assets, outdoorFeatures, nodes, edges,
@@ -184,8 +199,9 @@ export default function MapCanvas({
       y: (canvasHeight - floorHeight * scale) / 2,
     });
     stage.batchDraw();
+    emitViewport();
 
-  }, [floorWidth, floorHeight, canvasWidth, canvasHeight]);
+  }, [floorWidth, floorHeight, canvasWidth, canvasHeight, emitViewport]);
 
   const getStagePos = useCallback(() => {
     const stage = stageRef.current;
@@ -271,29 +287,31 @@ export default function MapCanvas({
     }
   }, [activePolygon, commitPolygon, pushSnapshot]);
 
+  const closeActiveOutdoor = useCallback(() => {
+    const polygonType = activeOutdoorType === "parking" || activeOutdoorType === "landscape";
+    if (activePolygon.length < (polygonType ? 3 : 2)) return;
+    pushSnapshot();
+    addOutdoorFeature({
+      id: nanoid(),
+      type: activeOutdoorType,
+      label: activeOutdoorType[0].toUpperCase() + activeOutdoorType.slice(1),
+      points: activePolygon,
+      width: activeOutdoorType === "road" ? 70 : activeOutdoorType === "sidewalk" ? 24 : 40,
+      color: activeOutdoorType === "landscape" ? "#b7d7a8" : activeOutdoorType === "parking" ? "#d9dde3" : "#d1d5db",
+      lineColor: "#ffffff",
+      laneCount: 2,
+      parkingAngle: 90,
+      stallWidth: 24,
+      stallDepth: 48,
+    });
+    clearActivePolygon();
+  }, [activeOutdoorType, activePolygon, pushSnapshot, addOutdoorFeature, clearActivePolygon]);
+
   const handleStageDblClick = useCallback(() => {
     if (isSpacePanning) return;
     if (tool === "polygon") closeActivePolygon();
-    if (tool === "outdoor") {
-      const polygonType = activeOutdoorType === "parking" || activeOutdoorType === "landscape";
-      if (activePolygon.length < (polygonType ? 3 : 2)) return;
-      pushSnapshot();
-      addOutdoorFeature({
-        id: nanoid(),
-        type: activeOutdoorType,
-        label: activeOutdoorType[0].toUpperCase() + activeOutdoorType.slice(1),
-        points: activePolygon,
-        width: activeOutdoorType === "road" ? 70 : activeOutdoorType === "sidewalk" ? 24 : 40,
-        color: activeOutdoorType === "landscape" ? "#b7d7a8" : activeOutdoorType === "parking" ? "#d9dde3" : "#d1d5db",
-        lineColor: "#ffffff",
-        laneCount: 2,
-        parkingAngle: 90,
-        stallWidth: 24,
-        stallDepth: 48,
-      });
-      clearActivePolygon();
-    }
-  }, [isSpacePanning, tool, closeActivePolygon, activeOutdoorType, activePolygon, pushSnapshot, addOutdoorFeature, clearActivePolygon]);
+    if (tool === "outdoor") closeActiveOutdoor();
+  }, [isSpacePanning, tool, closeActivePolygon, closeActiveOutdoor]);
 
   const handleNodeClick = useCallback((nodeId: string, e: any) => {
     if (isSpacePanning) {
@@ -377,7 +395,8 @@ export default function MapCanvas({
       x: pointer.x - mousePt.x * newScale,
       y: pointer.y - mousePt.y * newScale,
     });
-  }, []);
+    emitViewport();
+  }, [emitViewport]);
 
   // Two-finger pinch zoom for phones/tablets, anchored between the fingers.
   const handleTouchMove = useCallback((e: any) => {
@@ -406,11 +425,12 @@ export default function MapCanvas({
       stage.scale({ x: nextScale, y: nextScale });
       stage.position({ x: center.x - point.x * nextScale, y: center.y - point.y * nextScale });
       stage.batchDraw();
+      emitViewport();
     }
 
     lastTouchCenterRef.current = center;
     lastTouchDistanceRef.current = distance;
-  }, []);
+  }, [emitViewport]);
 
   const handleTouchEnd = useCallback(() => {
     lastTouchCenterRef.current = null;
@@ -781,10 +801,20 @@ export default function MapCanvas({
 
   return (
     <div
-      className="flex-1 overflow-hidden bg-slate-100 relative"
+      className={`z-[1] h-full w-full flex-1 overflow-hidden relative ${showGeoBasemap ? "bg-transparent" : "bg-slate-100"}`}
       style={{ cursor: tool === "pan" || isSpacePanning ? (isStageDragging ? "grabbing" : "grab") : "crosshair", touchAction: "none" }}
       onContextMenu={(e) => { e.preventDefault(); }}
     >
+      {showGeoBasemap && geoReference && (
+        <GeoBasemap
+          reference={geoReference}
+          floorWidth={floorWidth}
+          floorHeight={floorHeight}
+          canvasWidth={canvasWidth}
+          canvasHeight={canvasHeight}
+          viewport={geoViewport}
+        />
+      )}
       {gridSnapToggle}
       {/* Status banners */}
       {tool === "edge" && edgeStart && (
@@ -840,6 +870,7 @@ export default function MapCanvas({
         </div>
       )}
 
+      <div className="relative z-[1]">
       <Stage
         ref={stageRef}
         width={canvasWidth}
@@ -848,8 +879,14 @@ export default function MapCanvas({
         onDragStart={(e: any) => {
           if (e.target === stageRef.current) setIsStageDragging(true);
         }}
+        onDragMove={(e: any) => {
+          if (e.target === stageRef.current) emitViewport();
+        }}
         onDragEnd={(e: any) => {
-          if (e.target === stageRef.current) setIsStageDragging(false);
+          if (e.target === stageRef.current) {
+            setIsStageDragging(false);
+            emitViewport();
+          }
         }}
         onClick={handleStageClick}
         onTap={handleStageClick}
@@ -862,12 +899,21 @@ export default function MapCanvas({
       >
         {/* Background floor surface */}
         <Layer>
-          <Rect id="bg-rect" x={0} y={0} width={floorWidth} height={floorHeight} fill="#ffffff" stroke="#cbd5e1" strokeWidth={1} />
+          <Rect
+            id="bg-rect"
+            x={0}
+            y={0}
+            width={floorWidth}
+            height={floorHeight}
+            fill={showGeoBasemap ? "rgba(255,255,255,0.16)" : "#ffffff"}
+            stroke={showGeoBasemap ? "#ffffff" : "#cbd5e1"}
+            strokeWidth={showGeoBasemap ? 2 : 1}
+          />
           {Array.from({ length: Math.floor(floorWidth / 100) + 1 }).map((_, i) => (
-            <Line key={`gx-${i}`} points={[i * 100, 0, i * 100, floorHeight]} stroke="#f1f5f9" strokeWidth={1} listening={false} />
+            <Line key={`gx-${i}`} points={[i * 100, 0, i * 100, floorHeight]} stroke={showGeoBasemap ? "rgba(255,255,255,0.35)" : "#f1f5f9"} strokeWidth={1} listening={false} />
           ))}
           {Array.from({ length: Math.floor(floorHeight / 100) + 1 }).map((_, i) => (
-            <Line key={`gy-${i}`} points={[0, i * 100, floorWidth, i * 100]} stroke="#f1f5f9" strokeWidth={1} listening={false} />
+            <Line key={`gy-${i}`} points={[0, i * 100, floorWidth, i * 100]} stroke={showGeoBasemap ? "rgba(255,255,255,0.35)" : "#f1f5f9"} strokeWidth={1} listening={false} />
           ))}
           {bgImage && (
             <KonvaImage image={bgImage} opacity={0.4} x={0} y={0} width={floorWidth} height={floorHeight} listening={false} />
@@ -883,8 +929,12 @@ export default function MapCanvas({
               <Group
                 key={feature.id}
                 draggable={tool === "select" && selected && !isSpacePanning}
-                onDragStart={() => pushSnapshot()}
+                onDragStart={(event: any) => {
+                  if (event.target !== event.currentTarget) return;
+                  pushSnapshot();
+                }}
                 onDragEnd={(e: any) => {
+                  if (e.target !== e.currentTarget) return;
                   const dx = e.target.x();
                   const dy = e.target.y();
                   e.target.position({ x: 0, y: 0 });
@@ -901,7 +951,7 @@ export default function MapCanvas({
                   strokeWidth={closed ? (selected ? 5 : 2) : feature.width}
                   lineCap="round"
                   lineJoin="round"
-                  opacity={0.9}
+                  opacity={1}
                   onClick={(e: any) => {
                     if (tool !== "select" || isSpacePanning) return;
                     e.cancelBubble = true;
@@ -942,21 +992,52 @@ export default function MapCanvas({
                       );
                       updateOutdoorFeature(feature.id, { points });
                     }}
+                    onDragEnd={(e: any) => {
+                      e.cancelBubble = true;
+                    }}
                   />
                 ))}
               </Group>
             );
           })}
           {tool === "outdoor" && activePolygon.length > 0 && (
-            <Line
-              points={[...activePolygon.flatMap((point) => [point.x, point.y]), mousePos.x, mousePos.y]}
-              closed={(activeOutdoorType === "parking" || activeOutdoorType === "landscape") && activePolygon.length >= 3}
-              fill={activeOutdoorType === "landscape" ? "#b7d7a866" : activeOutdoorType === "parking" ? "#d9dde366" : undefined}
-              stroke="#059669"
-              strokeWidth={3}
-              dash={[12, 8]}
-              listening={false}
-            />
+            <>
+              <Line
+                points={[...activePolygon.flatMap((point) => [point.x, point.y]), mousePos.x, mousePos.y]}
+                closed={(activeOutdoorType === "parking" || activeOutdoorType === "landscape") && activePolygon.length >= 3}
+                fill={activeOutdoorType === "landscape" ? "#b7d7a866" : activeOutdoorType === "parking" ? "#d9dde366" : undefined}
+                stroke="#059669"
+                strokeWidth={3}
+                dash={[12, 8]}
+                listening={false}
+              />
+              {activePolygon.map((point, index) => {
+                const minimumPoints = activeOutdoorType === "parking" || activeOutdoorType === "landscape" ? 3 : 2;
+                const isClosePoint = index === 0 && activePolygon.length >= minimumPoints;
+                return (
+                  <Circle
+                    key={`outdoor-point-${index}`}
+                    x={point.x}
+                    y={point.y}
+                    radius={isClosePoint ? 7 : 4}
+                    fill="#059669"
+                    stroke={isClosePoint ? "#ffffff" : undefined}
+                    strokeWidth={isClosePoint ? 2 : 0}
+                    hitStrokeWidth={isClosePoint ? 10 : 0}
+                    onClick={isClosePoint ? (event: any) => {
+                      if (isSpacePanning) return;
+                      event.cancelBubble = true;
+                      closeActiveOutdoor();
+                    } : undefined}
+                    onTap={isClosePoint ? (event: any) => {
+                      if (isSpacePanning) return;
+                      event.cancelBubble = true;
+                      closeActiveOutdoor();
+                    } : undefined}
+                  />
+                );
+              })}
+            </>
           )}
         </Layer>
 
@@ -1021,7 +1102,7 @@ export default function MapCanvas({
           })}
 
           {/* Active polygon being drawn */}
-          {activePolygon.length > 0 && (
+          {tool === "polygon" && activePolygon.length > 0 && (
             <>
               <Line
                 points={[...activePolygon.flatMap((p) => [p.x, p.y]), mousePos.x, mousePos.y]}
@@ -1432,6 +1513,7 @@ export default function MapCanvas({
           />
         </Layer>
       </Stage>
+      </div>
 
       {ctxMenu && (
         <>

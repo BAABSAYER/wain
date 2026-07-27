@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { randomUUID } from "crypto";
 
 // QR codes embed a stable `/qr/<code>` URL that resolves to the currently
 // assigned nav node at scan time — so a printed sticker keeps working even
@@ -86,5 +87,7 @@ export default async function QrCodePage({
 
   // Happy path: hand off to the visitor nav page.
   const nodeFloorId = qr.node?.floorId ?? qr.floorId;
-  redirect(`/nav/${qr.buildingId}/${nodeFloorId}/${qr.nodeId}`);
+  // Every visit through the stable QR URL is a new physical scan. The token
+  // lets the nav page distinguish that from a browser reload of an open route.
+  redirect(`/nav/${qr.buildingId}/${nodeFloorId}/${qr.nodeId}?scan=${randomUUID()}`);
 }

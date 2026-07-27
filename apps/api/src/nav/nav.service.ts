@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from "@nestjs/common";
+import { BadRequestException, Injectable, NotFoundException } from "@nestjs/common";
 import { PrismaService } from "../prisma.service";
 import { CacheService } from "../cache/cache.service";
 import { CreateNodeDto } from "./dto/create-node.dto";
@@ -178,6 +178,58 @@ export class NavService {
         }).filter(Boolean),
       );
 
+      // Floor transitions are reciprocal one-to-one links between nodes of the
+      // same type. Normalize both sides whenever this floor is saved so stale
+      // links cannot create elevator/stair shortcuts across unrelated shafts.
+      const savedNodeIds = [...idMap.values()];
+      const savedNodes = await tx.navNode.findMany({
+        where: { id: { in: savedNodeIds } },
+      });
+      const previousById = new Map(existing.map((node) => [node.id, node]));
+      for (const node of savedNodes) {
+        const previousTargetId = previousById.get(node.id)?.connectedFloorNodeId;
+        if (previousTargetId && previousTargetId !== node.connectedFloorNodeId) {
+          await tx.navNode.updateMany({
+            where: { id: previousTargetId, connectedFloorNodeId: node.id },
+            data: { connectedFloorNodeId: null },
+          });
+        }
+      }
+
+      const savedTransitionNodes = savedNodes.filter((node) => node.connectedFloorNodeId);
+      for (const node of savedTransitionNodes) {
+        const target = await tx.navNode.findUnique({
+          where: { id: node.connectedFloorNodeId! },
+        });
+        if (!target || target.floorId === node.floorId || target.type !== node.type) {
+          throw new BadRequestException(
+            `Floor transition ${node.id} must link to the same node type on another floor`,
+          );
+        }
+
+        // Release either node's previous reciprocal partner.
+        if (target.connectedFloorNodeId && target.connectedFloorNodeId !== node.id) {
+          await tx.navNode.updateMany({
+            where: {
+              id: target.connectedFloorNodeId,
+              connectedFloorNodeId: target.id,
+            },
+            data: { connectedFloorNodeId: null },
+          });
+        }
+        await tx.navNode.updateMany({
+          where: {
+            id: { notIn: [node.id, target.id] },
+            connectedFloorNodeId: { in: [node.id, target.id] },
+          },
+          data: { connectedFloorNodeId: null },
+        });
+        await tx.navNode.update({
+          where: { id: target.id },
+          data: { connectedFloorNodeId: node.id },
+        });
+      }
+
       const buildingNodes = await tx.navNode.findMany({
         where: { floor: { buildingId: floor.buildingId } },
         select: { id: true, floorId: true, type: true, connectedFloorNodeId: true },
@@ -186,9 +238,15 @@ export class NavService {
       const transitionEdges = buildingNodes.flatMap((n) => {
         if (!n.connectedFloorNodeId) return [];
         const target = nodeById.get(n.connectedFloorNodeId);
-        if (!target || target.floorId === n.floorId) return [];
-        const distance = n.type === "elevator" ? 30 : 20;
-        const isAccessible = n.type === "elevator";
+        if (
+          !target
+          || target.floorId === n.floorId
+          || target.type !== n.type
+          || target.connectedFloorNodeId !== n.id
+          || n.id.localeCompare(target.id) > 0
+        ) return [];
+        const distance = n.type === "entrance" ? 1 : n.type === "elevator" ? 30 : 20;
+        const isAccessible = n.type === "entrance" || n.type === "elevator";
         return [
           { fromNodeId: n.id, toNodeId: target.id, distance, isAccessible },
           { fromNodeId: target.id, toNodeId: n.id, distance, isAccessible },

@@ -173,7 +173,16 @@ export const useMapBuilderStore = create<MapBuilderState>((set) => ({
 
   setActivePreset: (id) => set({ activePreset: id }),
   setActiveAssetPreset: (id) => set({ activeAssetPreset: id }),
-  setActiveOutdoorType: (type) => set({ activeOutdoorType: type }),
+  setActiveOutdoorType: (type) => set({
+    activeOutdoorType: type,
+    tool: "outdoor",
+    activePolygon: [],
+    activePreset: null,
+    activeAssetPreset: null,
+    selectedId: null,
+    selectedKind: null,
+    extraSelectedIds: [],
+  }),
   setGridSnap: (on) => set({ gridSnap: on }),
 
   enterLinkMode: (storeId) => set({ linkModeStoreId: storeId }),

@@ -11,7 +11,11 @@ const CATEGORIES: StoreCategory[] = [
 ];
 
 const NODE_TYPES = ["path", "entrance", "elevator", "stairs", "escalator", "qr"] as const;
-const FLOOR_TRANSITION_TYPES = new Set(["elevator", "stairs", "escalator"]);
+const FLOOR_TRANSITION_TYPES = new Set(["entrance", "elevator", "stairs", "escalator"]);
+
+function isCompatibleFloorTransition(sourceType: string, targetType: string) {
+  return sourceType === targetType && FLOOR_TRANSITION_TYPES.has(targetType);
+}
 
 const COLORS = [
   "#ffffff","#cbd5e1","#94a3b8","#64748b",
@@ -303,7 +307,12 @@ export default function PropertiesPanel({ floors = [], currentFloorId }: Props) 
           min={min}
           max={max}
           value={outdoor[key]}
-          onChange={(event) => updateOutdoorFeature(outdoor.id, { [key]: Number(event.target.value) })}
+          onChange={(event) => {
+            if (event.target.value === "") return;
+            const value = Number(event.target.value);
+            if (!Number.isFinite(value)) return;
+            updateOutdoorFeature(outdoor.id, { [key]: Math.min(max, Math.max(min, value)) });
+          }}
           className="bg-white border border-slate-300 rounded px-3 py-1.5 text-sm text-slate-900"
         />
       </label>
@@ -484,7 +493,7 @@ export default function PropertiesPanel({ floors = [], currentFloorId }: Props) 
       .filter((f) => f.id !== currentFloorId)
       .flatMap((f) =>
         (f.navNodes ?? [])
-          .filter((n) => FLOOR_TRANSITION_TYPES.has(n.type))
+          .filter((n) => isCompatibleFloorTransition(node.type, n.type))
           .map((n) => ({ ...n, floor: f })),
       );
     const connectedTarget = transitionNodeOptions.find((n) => n.id === node.connectedFloorNodeId);

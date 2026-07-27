@@ -39,7 +39,7 @@ function AssetPresetGlyph({ preset }: { preset: AssetPreset }) {
 const TOOLS: { id: DrawTool; label: string; icon: string; hint: string }[] = [
   { id: "select",  label: "Select",   icon: "↖", hint: "Click a shape, node, or edge to edit. Drag handles to resize." },
   { id: "pan",     label: "Pan",      icon: "✋", hint: "Drag to move around the canvas" },
-  { id: "polygon", label: "Free Draw",icon: "⬡", hint: "Click to add corners, double-click to close" },
+  { id: "polygon", label: "Draw Room", icon: "⬡", hint: "Draw a room or indoor area. Click corners, then double-click to close." },
   { id: "shape",   label: "Shape",    icon: "⬜", hint: "Pick a preset shape, then click the canvas to drop it" },
   { id: "asset",   label: "Asset",    icon: "3D", hint: "Pick a 3D asset, then click the canvas to place it" },
   { id: "outdoor", label: "Outdoor",  icon: "▤", hint: "Draw roads, parking, sidewalks, crosswalks, and landscape" },
@@ -196,6 +196,7 @@ export default function Toolbar({ onSave, isSaving, isDirty, buildingHref }: Pro
           ] as const).map(([type, label]) => (
             <button
               key={type}
+              type="button"
               onClick={() => setActiveOutdoorType(type)}
               className={`px-3 py-2 rounded border text-sm font-medium ${
                 activeOutdoorType === type ? "bg-emerald-600 border-emerald-600 text-white" : "bg-white border-slate-200 text-slate-700"

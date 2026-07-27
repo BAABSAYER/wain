@@ -33,6 +33,9 @@ const TRANSLATIONS = {
   floor:                 { en: "Floor",                 ar: "الطابق" },
   groundFloor:           { en: "Ground",                ar: "أرضي" },
   youAreHere:            { en: "You are here",          ar: "أنت هنا" },
+  confirmFloorArrival:   { en: "I'm on this floor",     ar: "أنا في هذا الطابق" },
+  confirmDestination:    { en: "I'm here",              ar: "أنا هنا" },
+  locationUpdated:       { en: "Current location updated", ar: "تم تحديث موقعك الحالي" },
 
   // ── Search bar ──
   searchPlaceholder:     { en: "Search…",               ar: "ابحث…" },

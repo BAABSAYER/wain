@@ -212,6 +212,57 @@ export interface CanvasOutdoorFeature {
   stallDepth: number;
 }
 
+export type GeoBasemapStyle = "satellite" | "streets";
+
+export interface FloorGeoreference {
+  latitude: number;
+  longitude: number;
+  bearing: number;
+  metersPerUnit: number;
+  basemap: GeoBasemapStyle;
+}
+
+const EARTH_RADIUS_METERS = 6378137;
+
+/** Convert floor-local coordinates to WGS84 around the floor centre. */
+export function floorPointToLngLat(
+  x: number,
+  y: number,
+  floorWidth: number,
+  floorHeight: number,
+  reference: FloorGeoreference,
+): [number, number] {
+  const theta = reference.bearing * Math.PI / 180;
+  const dx = (x - floorWidth / 2) * reference.metersPerUnit;
+  const dy = (y - floorHeight / 2) * reference.metersPerUnit;
+  const east = dx * Math.cos(theta) - dy * Math.sin(theta);
+  const north = -dx * Math.sin(theta) - dy * Math.cos(theta);
+  const latRad = reference.latitude * Math.PI / 180;
+  const latitude = reference.latitude + (north / EARTH_RADIUS_METERS) * 180 / Math.PI;
+  const longitude = reference.longitude + (east / (EARTH_RADIUS_METERS * Math.cos(latRad))) * 180 / Math.PI;
+  return [longitude, latitude];
+}
+
+/** Convert WGS84 coordinates back into the floor's local coordinate system. */
+export function lngLatToFloorPoint(
+  longitude: number,
+  latitude: number,
+  floorWidth: number,
+  floorHeight: number,
+  reference: FloorGeoreference,
+): Point2D {
+  const latRad = reference.latitude * Math.PI / 180;
+  const east = (longitude - reference.longitude) * Math.PI / 180 * EARTH_RADIUS_METERS * Math.cos(latRad);
+  const north = (latitude - reference.latitude) * Math.PI / 180 * EARTH_RADIUS_METERS;
+  const theta = reference.bearing * Math.PI / 180;
+  const dx = east * Math.cos(theta) - north * Math.sin(theta);
+  const dy = -east * Math.sin(theta) - north * Math.cos(theta);
+  return {
+    x: floorWidth / 2 + dx / reference.metersPerUnit,
+    y: floorHeight / 2 + dy / reference.metersPerUnit,
+  };
+}
+
 export type DrawTool = "select" | "polygon" | "shape" | "asset" | "outdoor" | "node" | "edge" | "qr" | "pan";
 
 export interface CanvasStore {

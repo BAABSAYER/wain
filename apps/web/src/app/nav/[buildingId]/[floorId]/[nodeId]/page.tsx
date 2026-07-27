@@ -13,8 +13,14 @@ import PlacesPanel from "@/components/nav/PlacesPanel";
 import HelpPanel from "@/components/nav/HelpPanel";
 import SceneErrorBoundary from "@/components/scene/SceneErrorBoundary";
 import { useLocale } from "@/lib/i18n";
+import {
+  readNavigationLocation,
+  saveNavigationLocation,
+  type NavigationLocationSource,
+} from "@/lib/navigation-location";
 import type { SceneProjectionInfo } from "@/components/scene/BuildingMap";
 import type { BuildingMapHandle } from "@/components/scene/BuildingMap";
+import type { FloorGeoreference, GeoBasemapStyle } from "@wain/types";
 
 // ── Active engine: MapLibre (LEAP-style). The old Three.js BuildingScene is kept
 //    in the repo but inactive — swap the import below to revert.
@@ -38,6 +44,9 @@ interface BuildingData {
 interface FloorData {
   id: string; name: string; nameAr?: string; level: number;
   width: number; height: number;
+  geoLatitude?: number | null; geoLongitude?: number | null;
+  geoBearing?: number | null; geoMetersPerUnit?: number | null;
+  geoBasemap?: GeoBasemapStyle | null;
   stores: StoreData[]; assets?: AssetData[]; outdoorFeatures?: OutdoorFeatureData[]; navNodes: NavNodeData[];
 }
 interface StoreData {
@@ -89,17 +98,42 @@ export default function NavPage() {
   const [activeTab, setActiveTab] = useState<"map" | "list" | "help">("map");
   const [projection, setProjection] = useState<SceneProjectionInfo>({ azimuth: 0, destScreen: null });
   const [graph, setGraph] = useState<any[]>([]);
+  const [confirmedNodeId, setConfirmedNodeId] = useState(nodeId);
+  const [locationNotice, setLocationNotice] = useState(false);
+  const scanTokenRef = useRef<string | null>(null);
 
   useEffect(() => {
+    const scanToken = new URLSearchParams(window.location.search).get("scan");
+    scanTokenRef.current = scanToken;
+
     api.getBuilding(buildingId)
       .then((b: BuildingData) => {
         setBuilding(b);
-        // The linked node is the source of truth. A QR may still carry an old
-        // floorId after reassignment, which used to open the wrong floor and
-        // hide the "You are here" marker entirely.
-        const scanFloor = b.floors.find((f) => f.navNodes.some((node) => node.id === nodeId));
-        const floor = scanFloor ?? b.floors.find((f) => f.id === floorId) ?? b.floors[0];
+        const findNodeFloor = (id: string) =>
+          b.floors.find((f) => f.navNodes.some((candidate) => candidate.id === id));
+        const scanFloor = findNodeFloor(nodeId);
+        const saved = readNavigationLocation(buildingId);
+        const canRestore =
+          saved?.scannedNodeId === nodeId
+          && saved.scanToken === scanToken
+          && !!findNodeFloor(saved.currentNodeId);
+        const restoredNodeId = canRestore ? saved.currentNodeId : nodeId;
+        const restoredFloor = findNodeFloor(restoredNodeId);
+        const floor = restoredFloor ?? scanFloor ?? b.floors.find((f) => f.id === floorId) ?? b.floors[0];
+
+        setConfirmedNodeId(restoredNodeId);
         setCurrentFloor(floor ?? null);
+        if (!canRestore && scanFloor) {
+          saveNavigationLocation({
+            buildingId,
+            scannedNodeId: nodeId,
+            scanToken,
+            currentNodeId: nodeId,
+            floorId: scanFloor.id,
+            source: "qr",
+            confirmedAt: Date.now(),
+          });
+        }
         api.track({ buildingId, floorId: floor?.id ?? floorId, qrCode: nodeId, eventType: "qr_scan" }).catch(() => {});
       })
       .catch(() => setError("Building not found. Please scan the QR code again."))
@@ -112,15 +146,15 @@ export default function NavPage() {
   const originNode = useMemo(() => {
     if (!building) return null;
     for (const f of building.floors) {
-      const n = f.navNodes.find((n) => n.id === nodeId);
+      const n = f.navNodes.find((n) => n.id === confirmedNodeId);
       if (n) return n;
     }
     return null;
-  }, [building, nodeId]);
+  }, [building, confirmedNodeId]);
 
   const originLabel = t("youAreHere");
 
-  // "You are here" pin is always the scan node (no step-by-step simulation).
+  // The pin advances only after the user confirms a floor handoff or arrival.
   const currentPosition = useMemo(() => {
     if (originNode) return { x: originNode.x, y: originNode.y, floorId: originNode.floorId };
     return null;
@@ -135,6 +169,29 @@ export default function NavPage() {
     }
     return null;
   }, [currentPosition, currentFloor]);
+
+  const geoReference = useMemo<FloorGeoreference | null>(() => {
+    if (
+      typeof currentFloor?.geoLatitude !== "number"
+      || typeof currentFloor.geoLongitude !== "number"
+      || typeof currentFloor.geoMetersPerUnit !== "number"
+      || currentFloor.geoMetersPerUnit <= 0
+    ) return null;
+    return {
+      latitude: currentFloor.geoLatitude,
+      longitude: currentFloor.geoLongitude,
+      bearing: currentFloor.geoBearing ?? 0,
+      metersPerUnit: currentFloor.geoMetersPerUnit,
+      basemap: currentFloor.geoBasemap === "streets" ? "streets" : "satellite",
+    };
+  }, [
+    currentFloor?.id,
+    currentFloor?.geoLatitude,
+    currentFloor?.geoLongitude,
+    currentFloor?.geoBearing,
+    currentFloor?.geoMetersPerUnit,
+    currentFloor?.geoBasemap,
+  ]);
 
   const showCurrentLocation = useCallback(() => {
     const scanFloor = building?.floors.find((floor) => floor.id === originNode?.floorId);
@@ -165,7 +222,9 @@ export default function NavPage() {
   // Heading on the you-are-here pin → points toward the first waypoint of the route.
   const heading = useMemo<number | null>(() => {
     if (!route || !originNode || route.steps.length < 2) return null;
-    const next = route.steps[1];
+    const originIndex = route.steps.findIndex((step) => step.nodeId === originNode.id);
+    const next = route.steps[originIndex >= 0 ? originIndex + 1 : 1];
+    if (!next || next.floorId !== originNode.floorId) return null;
     const dx = next.x - originNode.x;
     const dy = next.y - originNode.y;
     if (dx === 0 && dy === 0) return null;
@@ -198,8 +257,28 @@ export default function NavPage() {
     const onFloor = route.steps.filter((s) => s.floorId === currentFloor.id);
     const transNodeId = onFloor[onFloor.length - 1]?.nodeId;
     const transType = graph.find((n) => n.id === transNodeId)?.type ?? "elevator";
-    return { nextFloor, prevFloor, transType };
+    const nextNode = nextId
+      ? route.steps.find((step) => step.floorId === nextId) ?? null
+      : null;
+    return { nextFloor, prevFloor, transType, nextNode };
   }, [route, currentFloor, routeFloorIds, building, graph]);
+
+  const confirmLocation = useCallback((
+    nextNodeId: string,
+    nextFloorId: string,
+    source: NavigationLocationSource,
+  ) => {
+    setConfirmedNodeId(nextNodeId);
+    saveNavigationLocation({
+      buildingId,
+      scannedNodeId: nodeId,
+      scanToken: scanTokenRef.current,
+      currentNodeId: nextNodeId,
+      floorId: nextFloorId,
+      source,
+      confirmedAt: Date.now(),
+    });
+  }, [buildingId, nodeId]);
 
   // Category filter HIGHLIGHTS (never hides): all units stay on the map; the
   // chosen category is tinted via `highlightCategory` below.
@@ -211,13 +290,13 @@ export default function NavPage() {
     setDestinationName(name);
     setDestinationNameAr(nameAr);
 
-    // A destination preview may have switched floors. Navigation must always
-    // begin where the QR code was scanned and advance floors via the handoff.
+    // A destination preview may have switched floors. Navigation always begins
+    // at the last location the user explicitly confirmed.
     const startingFloor = building?.floors.find((floor) => floor.id === originNode?.floorId);
     if (startingFloor) setCurrentFloor(startingFloor);
 
     try {
-      const result = await api.getRoute(nodeId, storeId, false);
+      const result = await api.getRoute(confirmedNodeId, storeId, false);
       setRoute(result);
       api.track({ buildingId, floorId, eventType: "route_requested", destinationId: storeId }).catch(() => {});
     } catch (err: any) {
@@ -225,7 +304,7 @@ export default function NavPage() {
       setDestinationName(null);
       setDestinationNameAr(null);
     }
-  }, [nodeId, buildingId, floorId, building, originNode]);
+  }, [confirmedNodeId, buildingId, floorId, building, originNode]);
 
   const handleSearchSelect = (id: string, name: string, nameAr: string) => {
     const store = currentFloor?.stores.find((s) => s.id === id);
@@ -305,6 +384,31 @@ export default function NavPage() {
     setDestinationNameAr(null);
   };
 
+  const confirmFloorHandoff = () => {
+    if (!floorHandoff?.nextFloor || !floorHandoff.nextNode) return;
+    confirmLocation(
+      floorHandoff.nextNode.nodeId,
+      floorHandoff.nextFloor.id,
+      "floor_transition",
+    );
+    setCurrentFloor(floorHandoff.nextFloor);
+  };
+
+  const finalRouteStep = route?.steps[route.steps.length - 1] ?? null;
+  const canConfirmDestination =
+    !!route
+    && !!finalRouteStep
+    && currentFloor?.id === finalRouteStep.floorId
+    && !floorHandoff?.nextFloor;
+
+  const confirmDestinationArrival = () => {
+    if (!finalRouteStep) return;
+    confirmLocation(finalRouteStep.nodeId, finalRouteStep.floorId, "arrival");
+    clearRoute();
+    setLocationNotice(true);
+    window.setTimeout(() => setLocationNotice(false), 3000);
+  };
+
   if (loading) {
     return (
       <div className="h-dvh flex flex-col items-center justify-center gap-4 bg-slate-50">
@@ -325,8 +429,11 @@ export default function NavPage() {
     );
   }
 
-  // Validate that the scan node from the URL actually exists for this building
-  if (building && !originNode) {
+  // Validate that the QR node from the URL actually exists for this building.
+  const scannedNodeExists = building?.floors.some((floor) =>
+    floor.navNodes.some((candidate) => candidate.id === nodeId),
+  );
+  if (building && !scannedNodeExists) {
     const bName = locale === "ar" ? building.nameAr : building.name;
     return (
       <div className="h-dvh flex flex-col items-center justify-center gap-4 p-8 text-center bg-slate-50">
@@ -442,6 +549,7 @@ export default function NavPage() {
       <div className="flex-1 relative">
         <SceneErrorBoundary>
           <BuildingScene
+            key={currentFloor.id}
             ref={sceneRef}
             stores={allStores}
             assets={currentFloor.assets ?? []}
@@ -452,6 +560,7 @@ export default function NavPage() {
             highlightCategory={highlightCategory}
             floorWidth={currentFloor.width}
             floorHeight={currentFloor.height}
+            geoReference={geoReference}
             origin={mapPoint}
             focus={mapPoint}
             heading={heading}
@@ -524,38 +633,53 @@ export default function NavPage() {
       )}
 
       {/* ─── Cross-floor hand-off banner ─────────────────────── */}
-      {hasRoute && floorHandoff && (floorHandoff.nextFloor || floorHandoff.prevFloor) && (
+      {hasRoute && floorHandoff?.nextFloor && (
         <div className="absolute bottom-20 left-3 right-3 z-20">
           <div className="max-w-md mx-auto bg-blue-600 text-white rounded-2xl shadow-xl px-4 py-3 flex items-center gap-3">
             <span className="text-2xl flex-shrink-0">
-              {floorHandoff.transType === "stairs" ? "🪜" : floorHandoff.transType === "escalator" ? "⇅" : "🛗"}
+              {floorHandoff.transType === "entrance" ? "↪" : floorHandoff.transType === "stairs" ? "🪜" : floorHandoff.transType === "escalator" ? "⇅" : "🛗"}
             </span>
             <div className="flex-1 min-w-0 text-sm">
-              {floorHandoff.nextFloor ? (
-                <>
-                  <p className="font-semibold leading-tight">
-                    {locale === "ar"
-                      ? `استخدم ${floorHandoff.transType === "stairs" ? "السلم" : "المصعد"} إلى ${floorHandoff.nextFloor.nameAr || floorHandoff.nextFloor.name}`
-                      : `Take the ${floorHandoff.transType === "stairs" ? "stairs" : floorHandoff.transType === "escalator" ? "escalator" : "elevator"} to ${floorHandoff.nextFloor.name}`}
-                  </p>
-                  <p className="text-blue-100 text-xs leading-tight">
-                    {locale === "ar" ? "ثم تابع المسار" : "Then continue the route"}
-                  </p>
-                </>
-              ) : (
+              <>
                 <p className="font-semibold leading-tight">
-                  {locale === "ar" ? "تابع إلى الطابق السابق" : "Continue from the previous floor"}
+                  {locale === "ar"
+                    ? floorHandoff.transType === "entrance"
+                      ? `تابع عبر المدخل إلى ${floorHandoff.nextFloor.nameAr || floorHandoff.nextFloor.name}`
+                      : `استخدم ${floorHandoff.transType === "stairs" ? "السلم" : "المصعد"} إلى ${floorHandoff.nextFloor.nameAr || floorHandoff.nextFloor.name}`
+                    : floorHandoff.transType === "entrance"
+                      ? `Continue through the entrance to ${floorHandoff.nextFloor.name}`
+                      : `Take the ${floorHandoff.transType === "stairs" ? "stairs" : floorHandoff.transType === "escalator" ? "escalator" : "elevator"} to ${floorHandoff.nextFloor.name}`}
                 </p>
-              )}
+                <p className="text-blue-100 text-xs leading-tight">
+                  {locale === "ar" ? "ثم تابع المسار" : "Then continue the route"}
+                </p>
+              </>
             </div>
-            {floorHandoff.nextFloor && (
-              <button
-                onClick={() => setCurrentFloor(floorHandoff.nextFloor as any)}
-                className="flex-shrink-0 bg-white text-blue-700 font-bold text-sm px-3 py-2 rounded-xl hover:bg-blue-50"
-              >
-                {locale === "ar" ? "وصلت ←" : "I've arrived →"}
-              </button>
-            )}
+            <button
+              onClick={confirmFloorHandoff}
+              className="flex-shrink-0 bg-white text-blue-700 font-bold text-sm px-3 py-2 rounded-xl hover:bg-blue-50"
+            >
+              {t("confirmFloorArrival")}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {canConfirmDestination && (
+        <div className="absolute bottom-20 left-3 right-3 z-20">
+          <button
+            onClick={confirmDestinationArrival}
+            className="mx-auto flex min-h-12 w-full max-w-md items-center justify-center bg-emerald-600 px-5 py-3 text-base font-bold text-white shadow-xl hover:bg-emerald-700"
+          >
+            {t("confirmDestination")}
+          </button>
+        </div>
+      )}
+
+      {locationNotice && (
+        <div className="absolute bottom-20 left-3 right-3 z-30 pointer-events-none">
+          <div className="mx-auto w-fit bg-emerald-700 px-4 py-2 text-sm font-semibold text-white shadow-lg">
+            {t("locationUpdated")}
           </div>
         </div>
       )}

@@ -3,6 +3,7 @@ import { useRef, useEffect, useState, useImperativeHandle, forwardRef, useMemo }
 import maplibregl from "maplibre-gl";
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
+import { floorPointToLngLat, type FloorGeoreference } from "@wain/types";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { isOpenSpace, isFlatMapArea, isBoundaryArea, isPointAsset, categoryGlyph, categoryVisual } from "@/lib/category-icons";
 
@@ -122,6 +123,7 @@ interface Props {
   highlightCategory?: string | null;
   floorWidth: number;
   floorHeight: number;
+  geoReference?: FloorGeoreference | null;
   origin: { x: number; y: number } | null;
   focus: { x: number; y: number } | null;
   heading: number | null;
@@ -162,28 +164,16 @@ const METERS_PER_UNIT = 0.12;
 const DEG_PER_M_LNG = 1 / 111320;
 const DEG_PER_M_LAT = 1 / 110540;
 
-function makeToLngLat(w: number, h: number) {
+function makeToLngLat(w: number, h: number, geoReference?: FloorGeoreference | null) {
+  if (geoReference) {
+    return (x: number, y: number): [number, number] =>
+      floorPointToLngLat(x, y, w, h, geoReference);
+  }
   return (x: number, y: number): [number, number] => {
     const mx = (x - w / 2) * METERS_PER_UNIT;
     const my = (h / 2 - y) * METERS_PER_UNIT; // flip y (page down → lat up)
     return [mx * DEG_PER_M_LNG, my * DEG_PER_M_LAT];
   };
-}
-
-function ribbonRing(points: Array<{ x: number; y: number }>, width: number) {
-  if (points.length < 2) return [];
-  const half = width / 2;
-  const normals = points.map((point, index) => {
-    const before = points[Math.max(0, index - 1)];
-    const after = points[Math.min(points.length - 1, index + 1)];
-    const dx = after.x - before.x;
-    const dy = after.y - before.y;
-    const length = Math.hypot(dx, dy) || 1;
-    return { x: -dy / length, y: dx / length };
-  });
-  const left = points.map((point, index) => ({ x: point.x + normals[index].x * half, y: point.y + normals[index].y * half }));
-  const right = points.map((point, index) => ({ x: point.x - normals[index].x * half, y: point.y - normals[index].y * half })).reverse();
-  return [...left, ...right, left[0]];
 }
 
 function pointInPolygon(point: { x: number; y: number }, polygon: Array<{ x: number; y: number }>) {
@@ -468,6 +458,7 @@ async function createLoadedAssetObject(asset: AssetData) {
 function createThreeAssetLayer(
   getAssets: () => AssetData[],
   getToLngLat: () => (x: number, y: number) => [number, number],
+  getMetersPerUnit: () => number,
 ): maplibregl.CustomLayerInterface & { rebuild: () => void } {
   let map: maplibregl.Map | null = null;
   let scene: THREE.Scene | null = null;
@@ -496,10 +487,15 @@ function createThreeAssetLayer(
     for (const asset of getAssets()) {
       void createLoadedAssetObject(asset).then((object) => {
         if (!root || version !== rebuildVersion) return;
+        const assetLngLat = toLngLatLocal(asset.x, asset.y);
+        const assetMercator = maplibregl.MercatorCoordinate.fromLngLat(
+          { lng: assetLngLat[0], lat: assetLngLat[1] },
+          0,
+        );
         object.position.set(
-          asset.x * METERS_PER_UNIT,
-          (asset.z ?? 0) * METERS_PER_UNIT,
-          asset.y * METERS_PER_UNIT,
+          (assetMercator.x - anchor.x) / meterScale,
+          (asset.z ?? 0) * getMetersPerUnit(),
+          (assetMercator.y - anchor.y) / meterScale,
         );
         root.add(object);
         map?.triggerRepaint();
@@ -556,7 +552,7 @@ function createThreeAssetLayer(
 
 const BuildingMap = forwardRef<BuildingMapHandle, Props>(function BuildingMap(
   { stores, assets = [], outdoorFeatures = [], routeSteps, destinationId, selectedId, highlightCategory = null, floorWidth, floorHeight,
-    origin, focus, heading, initialAzimuth, locale = "en", navEdges = [], onProjection, onBlockClick },
+    geoReference = null, origin, focus, heading, initialAzimuth, locale = "en", navEdges = [], onProjection, onBlockClick },
   ref,
 ) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -580,7 +576,10 @@ const BuildingMap = forwardRef<BuildingMapHandle, Props>(function BuildingMap(
   const fitZoomRef = useRef(18);
   originRef.current = origin;
 
-  const toLngLat = useMemo(() => makeToLngLat(floorWidth, floorHeight), [floorWidth, floorHeight]);
+  const toLngLat = useMemo(
+    () => makeToLngLat(floorWidth, floorHeight, geoReference),
+    [floorWidth, floorHeight, geoReference],
+  );
   assetsRef.current = assets;
   toLngLatRef.current = toLngLat;
 
@@ -610,9 +609,12 @@ const BuildingMap = forwardRef<BuildingMapHandle, Props>(function BuildingMap(
 
   // Bounds of the whole floor (for fitBounds / recenter)
   const floorBounds = useMemo(() => {
-    const sw = toLngLat(0, floorHeight);
-    const ne = toLngLat(floorWidth, 0);
-    return new maplibregl.LngLatBounds(sw, ne);
+    const bounds = new maplibregl.LngLatBounds();
+    bounds.extend(toLngLat(0, 0));
+    bounds.extend(toLngLat(floorWidth, 0));
+    bounds.extend(toLngLat(floorWidth, floorHeight));
+    bounds.extend(toLngLat(0, floorHeight));
+    return bounds;
   }, [toLngLat, floorWidth, floorHeight]);
 
   // ── GeoJSON builders ───────────────────────────────────────────────────────
@@ -683,9 +685,8 @@ const BuildingMap = forwardRef<BuildingMapHandle, Props>(function BuildingMap(
     type: "FeatureCollection" as const,
     features: outdoorFeatures.flatMap((feature) => {
       const polygonTypes = new Set(["parking", "landscape"]);
-      const ring = polygonTypes.has(feature.type)
-        ? [...feature.points, feature.points[0]]
-        : ribbonRing(feature.points, feature.width);
+      if (!polygonTypes.has(feature.type)) return [];
+      const ring = [...feature.points, feature.points[0]];
       if (ring.length < 4) return [];
       return [{
         type: "Feature" as const,
@@ -699,6 +700,41 @@ const BuildingMap = forwardRef<BuildingMapHandle, Props>(function BuildingMap(
       }];
     }),
   }), [outdoorFeatures, toLngLat]);
+
+  const outdoorLinesFC = useMemo(() => ({
+    type: "FeatureCollection" as const,
+    features: outdoorFeatures.flatMap((feature) => {
+      if (
+        (feature.type !== "road" && feature.type !== "sidewalk" && feature.type !== "crosswalk")
+        || feature.points.length < 2
+      ) return [];
+      return [{
+        type: "Feature" as const,
+        id: feature.id,
+        properties: {
+          id: feature.id,
+          type: feature.type,
+          color: feature.color || (feature.type === "road" ? "#cfd2d6" : "#e3e5e8"),
+          widthMeters: Math.max(0.1, feature.width * (geoReference?.metersPerUnit ?? METERS_PER_UNIT)),
+        },
+        geometry: {
+          type: "LineString" as const,
+          coordinates: feature.points.map((point) => toLngLat(point.x, point.y)),
+        },
+      }];
+    }),
+  }), [outdoorFeatures, toLngLat, geoReference?.metersPerUnit]);
+
+  const outdoorLineWidth = useMemo(() => {
+    const latitude = geoReference?.latitude ?? 0;
+    const circumference = 2 * Math.PI * 6378137 * Math.cos(latitude * Math.PI / 180);
+    const pixelsPerMeter = (zoom: number) => 512 * 2 ** zoom / circumference;
+    return [
+      "interpolate", ["exponential", 2], ["zoom"],
+      14, ["*", ["get", "widthMeters"], pixelsPerMeter(14)],
+      22, ["*", ["get", "widthMeters"], pixelsPerMeter(22)],
+    ] as any;
+  }, [geoReference?.latitude]);
 
   const outdoorMarkingsFC = useMemo(() => {
     const features: any[] = [];
@@ -824,7 +860,25 @@ const BuildingMap = forwardRef<BuildingMapHandle, Props>(function BuildingMap(
 
     const map = new maplibregl.Map({
       container: containerRef.current,
-      style: {
+      style: geoReference ? {
+        version: 8,
+        sources: {
+          basemap: {
+            type: "raster",
+            tiles: geoReference.basemap === "streets"
+              ? ["https://tile.openstreetmap.org/{z}/{x}/{y}.png"]
+              : ["https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"],
+            tileSize: 256,
+            // Avoid Esri's unavailable-imagery placeholder at level 20.
+            // MapLibre overzooms the last real tile when the camera goes closer.
+            maxzoom: 19,
+            attribution: geoReference.basemap === "streets"
+              ? "&copy; OpenStreetMap contributors"
+              : "Tiles &copy; Esri and contributors",
+          },
+        },
+        layers: [{ id: "basemap", type: "raster", source: "basemap" }],
+      } : {
         version: 8,
         sources: {},
         layers: [{ id: "bg", type: "background", paint: { "background-color": BACKGROUND } }],
@@ -832,8 +886,8 @@ const BuildingMap = forwardRef<BuildingMapHandle, Props>(function BuildingMap(
       center: toLngLat(floorWidth / 2, floorHeight / 2),
       zoom: 18,
       pitch: 50,
-      bearing: 0,
-      attributionControl: false,
+      bearing: geoReference?.bearing ?? 0,
+      attributionControl: geoReference ? { compact: true } : false,
       dragRotate: true,
       pitchWithRotate: true,
       maxPitch: 70,
@@ -852,14 +906,14 @@ const BuildingMap = forwardRef<BuildingMapHandle, Props>(function BuildingMap(
       map.addSource("floor", { type: "geojson", data: floorFC });
       map.addLayer({
         id: "floor-fill", type: "fill", source: "floor",
-        paint: { "fill-color": FLOOR_COLOR },
+        paint: { "fill-color": FLOOR_COLOR, "fill-opacity": geoReference ? 0.22 : 1 },
       });
       if (!map.hasImage("floor-tile")) {
         map.addImage("floor-tile", makeFloorPatternImage(), { pixelRatio: 2 });
       }
       map.addLayer({
         id: "floor-pattern", type: "fill", source: "floor",
-        paint: { "fill-pattern": "floor-tile", "fill-opacity": 0.2 },
+        paint: { "fill-pattern": "floor-tile", "fill-opacity": geoReference ? 0.08 : 0.2 },
       });
       map.addSource("outdoor-areas", { type: "geojson", data: outdoorAreasFC });
       map.addLayer({
@@ -869,6 +923,18 @@ const BuildingMap = forwardRef<BuildingMapHandle, Props>(function BuildingMap(
       map.addLayer({
         id: "outdoor-areas-outline", type: "line", source: "outdoor-areas",
         paint: { "line-color": "#ffffff", "line-width": 1.2, "line-opacity": 0.85 },
+      });
+      map.addSource("outdoor-lines", { type: "geojson", data: outdoorLinesFC });
+      map.addLayer({
+        id: "outdoor-line-surfaces",
+        type: "line",
+        source: "outdoor-lines",
+        layout: { "line-cap": "round", "line-join": "round" },
+        paint: {
+          "line-color": ["coalesce", ["get", "color"], "#cfd2d6"],
+          "line-width": outdoorLineWidth,
+          "line-opacity": 1,
+        },
       });
       map.addSource("outdoor-markings", { type: "geojson", data: outdoorMarkingsFC });
       map.addLayer({
@@ -968,6 +1034,7 @@ const BuildingMap = forwardRef<BuildingMapHandle, Props>(function BuildingMap(
       const assetLayer = createThreeAssetLayer(
         () => assetsRef.current,
         () => toLngLatRef.current,
+        () => geoReference?.metersPerUnit ?? METERS_PER_UNIT,
       );
       threeAssetLayerRef.current = assetLayer;
       map.addLayer(assetLayer);
@@ -1144,8 +1211,9 @@ const BuildingMap = forwardRef<BuildingMapHandle, Props>(function BuildingMap(
     const map = mapRef.current;
     if (!map || !readyRef.current) return;
     (map.getSource("outdoor-areas") as maplibregl.GeoJSONSource | undefined)?.setData(outdoorAreasFC as any);
+    (map.getSource("outdoor-lines") as maplibregl.GeoJSONSource | undefined)?.setData(outdoorLinesFC as any);
     (map.getSource("outdoor-markings") as maplibregl.GeoJSONSource | undefined)?.setData(outdoorMarkingsFC as any);
-  }, [outdoorAreasFC, outdoorMarkingsFC, ready]);
+  }, [outdoorAreasFC, outdoorLinesFC, outdoorMarkingsFC, ready]);
 
   useEffect(() => {
     const map = mapRef.current;

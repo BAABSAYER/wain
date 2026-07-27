@@ -65,6 +65,11 @@ export class FloorsService {
           width: source.width,
           height: source.height,
           floorPlanUrl: source.floorPlanUrl,
+          geoLatitude: source.geoLatitude,
+          geoLongitude: source.geoLongitude,
+          geoBearing: source.geoBearing,
+          geoMetersPerUnit: source.geoMetersPerUnit,
+          geoBasemap: source.geoBasemap,
         },
       });
 

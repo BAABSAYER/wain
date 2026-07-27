@@ -35,6 +35,11 @@ model Floor {
   width         Float    @default(1000)
   height        Float    @default(1000)
   floorPlanUrl  String?
+  geoLatitude   Float?
+  geoLongitude  Float?
+  geoBearing    Float    @default(0)
+  geoMetersPerUnit Float?
+  geoBasemap    String   @default("satellite")
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
