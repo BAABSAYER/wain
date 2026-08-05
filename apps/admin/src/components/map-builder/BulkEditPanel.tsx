@@ -2,6 +2,7 @@
 import { useMemo, useState } from "react";
 import { useMapBuilderStore } from "@/store/map-builder";
 import type { StoreCategory } from "@wain/types";
+import { MoveHorizontal, MoveVertical, Scaling } from "lucide-react";
 
 const CATEGORIES: StoreCategory[] = [
   "retail", "food", "services", "medical", "education",
@@ -16,6 +17,24 @@ interface AABB {
   minX: number; maxX: number;
   minY: number; maxY: number;
   midX: number; midY: number;
+}
+
+type MatchDimension = "width" | "height" | "both";
+
+function resizeAroundCenter(
+  box: AABB,
+  targetWidth: number | null,
+  targetHeight: number | null,
+) {
+  const width = box.maxX - box.minX;
+  const height = box.maxY - box.minY;
+  const scaleX = targetWidth !== null && width > 0 ? targetWidth / width : 1;
+  const scaleY = targetHeight !== null && height > 0 ? targetHeight / height : 1;
+
+  return box.polygon.map((point) => ({
+    x: box.midX + (point.x - box.midX) * scaleX,
+    y: box.midY + (point.y - box.midY) * scaleY,
+  }));
 }
 
 const COLORS = [
@@ -116,6 +135,37 @@ export default function BulkEditPanel({ selectedIds }: Props) {
   const [category, setCategory] = useState<StoreCategory>(selectedStores[0]?.category ?? "other");
   const [applyColor, setApplyColor] = useState(false);
   const [color, setColor] = useState<string>(selectedStores[0]?.color ?? COLORS[0]);
+  const referenceBox = aabbs.find((box) => box.id === selectedIds[0]);
+  const referenceHeight = referenceBox ? referenceBox.maxY - referenceBox.minY : 0;
+  const [footprintHeight, setFootprintHeight] = useState(
+    referenceHeight > 0 ? Number(referenceHeight.toFixed(2)).toString() : "",
+  );
+
+  const matchReferenceSize = (dimension: MatchDimension) => {
+    if (!referenceBox) return;
+    const width = referenceBox.maxX - referenceBox.minX;
+    const height = referenceBox.maxY - referenceBox.minY;
+    pushSnapshot();
+    for (const box of aabbs) {
+      if (box.id === referenceBox.id) continue;
+      updateStore(box.id, {
+        polygon: resizeAroundCenter(
+          box,
+          dimension === "height" ? null : width,
+          dimension === "width" ? null : height,
+        ),
+      });
+    }
+  };
+
+  const applyFootprintHeight = () => {
+    const height = Number(footprintHeight);
+    if (!Number.isFinite(height) || height <= 0) return;
+    pushSnapshot();
+    for (const box of aabbs) {
+      updateStore(box.id, { polygon: resizeAroundCenter(box, null, height) });
+    }
+  };
 
   const pickExisting = (z: string) => {
     setZone(z);
@@ -188,6 +238,65 @@ export default function BulkEditPanel({ selectedIds }: Props) {
             className="px-2 py-1.5 text-xs bg-white hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed border border-slate-200 rounded text-slate-700"
           >↕ Distribute</button>
         </div>
+      </div>
+
+      <div className="border-t border-slate-100 pt-3">
+        <div className="mb-2">
+          <p className="text-xs text-slate-700 font-medium">Match reference room</p>
+          <p className="text-[11px] text-slate-400 mt-0.5">
+            First selected: {selectedStores.find((store) => store.id === selectedIds[0])?.name || "Unnamed room"}
+          </p>
+        </div>
+        <div className="grid grid-cols-3 gap-1">
+          <button
+            onClick={() => matchReferenceSize("height")}
+            title="Match the height of the first selected room"
+            className="flex items-center justify-center gap-1 px-2 py-1.5 text-xs bg-white hover:bg-slate-100 border border-slate-200 rounded text-slate-700"
+          >
+            <MoveVertical size={14} aria-hidden="true" /> Height
+          </button>
+          <button
+            onClick={() => matchReferenceSize("width")}
+            title="Match the width of the first selected room"
+            className="flex items-center justify-center gap-1 px-2 py-1.5 text-xs bg-white hover:bg-slate-100 border border-slate-200 rounded text-slate-700"
+          >
+            <MoveHorizontal size={14} aria-hidden="true" /> Width
+          </button>
+          <button
+            onClick={() => matchReferenceSize("both")}
+            title="Match the width and height of the first selected room"
+            className="flex items-center justify-center gap-1 px-2 py-1.5 text-xs bg-white hover:bg-slate-100 border border-slate-200 rounded text-slate-700"
+          >
+            <Scaling size={14} aria-hidden="true" /> Both
+          </button>
+        </div>
+      </div>
+
+      <div className="border-t border-slate-100 pt-3">
+        <label className="flex flex-col gap-1">
+          <span className="text-xs text-slate-700 font-medium">Set selected room height</span>
+          <span className="text-[11px] text-slate-400">Floor-plan units</span>
+          <div className="flex gap-2 mt-1">
+            <input
+              type="number"
+              min="0.01"
+              step="0.01"
+              value={footprintHeight}
+              onChange={(event) => setFootprintHeight(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") applyFootprintHeight();
+              }}
+              className="min-w-0 flex-1 bg-white border border-slate-300 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 rounded px-3 py-1.5 text-sm text-slate-900 outline-none"
+            />
+            <button
+              onClick={applyFootprintHeight}
+              disabled={!Number.isFinite(Number(footprintHeight)) || Number(footprintHeight) <= 0}
+              className="px-3 py-1.5 bg-slate-800 hover:bg-slate-900 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded text-xs font-medium"
+            >
+              Set height
+            </button>
+          </div>
+        </label>
       </div>
 
       {/* Existing-zone quick picks */}

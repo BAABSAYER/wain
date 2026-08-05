@@ -45,7 +45,8 @@ export default function PropertiesPanel({ floors = [], currentFloorId }: Props) 
 
   // 2+ rooms selected → switch the panel to bulk-group mode.
   if (selectedKind === "store" && extraSelectedIds.length > 0 && selectedId) {
-    return <BulkEditPanel selectedIds={[selectedId, ...extraSelectedIds]} />;
+    const selectedIds = [selectedId, ...extraSelectedIds];
+    return <BulkEditPanel key={selectedIds.join(":")} selectedIds={selectedIds} />;
   }
 
   if (!selectedId) {
